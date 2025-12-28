@@ -104,7 +104,7 @@ def generate_new_batch():
     st.session_state.submitted_answers = {}
     st.session_state.quiz_finished = not new_batch
 
-# --- 主应用逻辑 (【最终修复】重构提交按钮逻辑) ---
+# --- 主应用逻辑 (【最终修复】采用最直接的 None 检查) ---
 def main():
     st.title("✈️ 飞机人电子系统刷题系统")
     st.markdown("### 专为飞机人提供")
@@ -213,11 +213,11 @@ def main():
 
     if not is_submitted:
         if st.button("✅ 提交答案", type="primary"):
-            # 【最终修复】防呆逻辑：检查用户是否真的做出了选择
-            if user_answer == current_question["options"][0]:
+            # 【最终修复】直接检查 user_answer 是否为 None
+            if user_answer is None:
                 st.warning("⚠️ 请至少选择一个选项后再提交！")
             else:
-                # 只有在用户做出有效选择后，才执行提交逻辑
+                # 只有在 user_answer 有有效值时，才执行后续逻辑
                 st.session_state.submitted_answers[question_id] = user_answer
                 user_answer_letter = user_answer.split(".")[0].strip().upper()
                 is_correct = user_answer_letter == current_question["answer"]
@@ -238,7 +238,6 @@ def main():
                 st.session_state.wrong_question_list = [q for q in st.session_state.all_questions if q['id'] in st.session_state.error_counts and st.session_state.error_counts[q['id']] >= 2]
                 st.rerun()
     else:
-        st.divider()
         # 这是最后一道防线，理论上现在不会再触发了
         if not user_answer_text:
             st.error("数据异常：未记录到您的答案。请点击侧边栏的“重新开始”。")
