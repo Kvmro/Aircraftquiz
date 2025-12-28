@@ -47,10 +47,8 @@ def load_questions():
         return normalized_questions
     except Exception as e: st.error(f"加载题库失败: {e}"); st.stop()
 
-# --- 重置/生成批次函数 (【核心修复】) ---
+# --- 重置/生成批次函数 (不变) ---
 def reset_quiz_state():
-    """重置所有与测验相关的会话状态，包括错题库"""
-    # 【修复】增加错题库相关的状态变量到删除列表
     keys_to_delete = [
         'all_questions', 'correct_ids', 'incorrect_ids', 'current_batch', 
         'current_question_idx', 'quiz_started', 'quiz_finished', 
@@ -90,7 +88,7 @@ def generate_new_batch():
     st.session_state.submitted_answers = {}
     st.session_state.quiz_finished = not new_batch
 
-# --- 主应用逻辑 (不变) ---
+# --- 主应用逻辑 (【核心修复】) ---
 def main():
     st.title("✈️ 飞机刷题软件 1.2")
     st.markdown("专为手机优化，界面更紧凑，体验更流畅！")
@@ -99,7 +97,7 @@ def main():
     if "all_questions" not in st.session_state:
         reset_quiz_state()
 
-    # --- 侧边栏 (不变) ---
+    # --- 侧边栏 (【核心修复】) ---
     with st.sidebar:
         st.header("⚙️ 设置")
         
@@ -119,7 +117,8 @@ def main():
                 
                 col1, col2 = st.columns(2)
                 with col1:
-                    if st.button("✅ 确认重置", type="destructive"):
+                    # 【修复】将 type="destructive" 改为 type="primary"，并修改文字以警示
+                    if st.button("🚨 确认重置 (危险)", type="primary"):
                         reset_quiz_state()
                         st.rerun()
                 with col2:
