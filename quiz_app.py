@@ -38,7 +38,7 @@ def load_questions():
             answer = item.get('answer') or item.get('正确答案')
             
             if not q_text or not options or not answer or not isinstance(options, list) or len(options) == 0:
-                st.warning(f"警告：跳过一道不完整的题目 (ID: {i})。请检查您的 question_bank.json 文件。")
+                st.warning(f"警告：跳过一道不完整的题目 (ID: {i})。")
                 continue
                 
             explanation = item.get('explanation') or item.get('解析') or ''
@@ -48,94 +48,113 @@ def load_questions():
                 'answer': str(answer).strip().upper(), 'explanation': str(explanation)
             })
         if not normalized_questions:
-            st.error("错误：未能加载任何有效题目。请检查 question_bank.json 文件内容。")
+            st.error("错误：未能加载任何有效题目。")
             st.stop()
         return normalized_questions
     except FileNotFoundError:
-        st.error("错误：未找到 question_bank.json 文件，请确保该文件与程序在同一目录下。")
+        st.error("错误：未找到 question_bank.json 文件。")
         st.stop()
     except json.JSONDecodeError:
-        st.error("错误：question_bank.json 文件格式不正确，请检查其是否为有效的 JSON 格式。")
+        st.error("错误：question_bank.json 文件格式不正确。")
         st.stop()
     except Exception as e:
         st.error(f"加载题库时发生未知错误: {str(e)}")
         st.stop()
 
-# --- 重置/生成批次函数 (不变) ---
-def reset_quiz_state():
-    keys_to_delete = [
-        'all_questions', 'correct_ids', 'incorrect_ids', 'current_batch',
-        'current_question_idx', 'quiz_started', 'quiz_finished',
-        'submitted_answers', 'error_counts', 'last_wrong_answers', 'wrong_question_list'
+# --- 【新增】开始新一轮答题 (不清空历史记录) ---
+def start_new_attempt():
+    # 只重置与本轮答题相关的状态
+    keys_to_reset_for_new_attempt = [
+        'current_batch', 'current_question_idx', 'submitted_answers', 'quiz_finished'
     ]
-    for key in keys_to_delete:
+    for key in keys_to_reset_for_new_attempt:
         if key in st.session_state:
             del st.session_state[key]
+    
+    # 确保刷题状态是开启的
+    st.session_state.quiz_started = True
+    
+    # 生成新的题目批次
+    generate_new_batch()
 
+# --- 【新增】重置所有学习进度 (清空一切) ---
+def reset_all_progress():
+    # 清除所有状态，包括历史记录
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
+    
+    # 重新初始化应用
+    initialize_app()
+
+# --- 【重构】初始化应用状态 ---
+def initialize_app():
     all_questions = load_questions()
     random.shuffle(all_questions)
+    
+    # 初始化持久化数据
     st.session_state.all_questions = all_questions
     st.session_state.correct_ids = set()
     st.session_state.incorrect_ids = set()
+    st.session_state.error_counts = {}  # {question_id: count}
+    st.session_state.last_wrong_answers = {} # {question_id: answer_text}
+
+    # 初始化本轮答题状态
     st.session_state.current_batch = []
     st.session_state.current_question_idx = 0
     st.session_state.quiz_started = False
     st.session_state.quiz_finished = False
     st.session_state.submitted_answers = {}
-    st.session_state.error_counts = {}
-    st.session_state.last_wrong_answers = {}
-    st.session_state.wrong_question_list = []
 
 def generate_new_batch():
     batch_size = 100
     new_batch = []
+    
+    # 优先加入错题
     incorrect_questions = [q for q in st.session_state.all_questions if q['id'] in st.session_state.incorrect_ids]
     new_batch.extend(incorrect_questions)
+    
+    # 加入少量已掌握的题目用于复习
     correct_questions = [q for q in st.session_state.all_questions if q['id'] in st.session_state.correct_ids]
     if correct_questions:
-        new_batch.extend(random.sample(correct_questions, min(20, len(correct_questions))))
+        num_review = min(20, len(correct_questions))
+        new_batch.extend(random.sample(correct_questions, num_review))
+        
+    # 加入新题
     remaining_questions = [q for q in st.session_state.all_questions if q['id'] not in st.session_state.correct_ids and q['id'] not in st.session_state.incorrect_ids]
     needed = batch_size - len(new_batch)
     if needed > 0 and remaining_questions:
         new_batch.extend(random.sample(remaining_questions, min(needed, len(remaining_questions))))
+        
     random.shuffle(new_batch)
+    
     st.session_state.current_batch = new_batch
     st.session_state.current_question_idx = 0
     st.session_state.submitted_answers = {}
     st.session_state.quiz_finished = not new_batch
 
-# --- 主应用逻辑 (【最终修复】采用最直接的 None 检查) ---
+# --- 主应用逻辑 ---
 def main():
+    # 初始化应用状态
+    if "all_questions" not in st.session_state:
+        initialize_app()
+
     st.title("✈️ 飞机人电子系统刷题系统")
-    st.markdown("### 专为飞机人提供,有bug请提出")
+    st.markdown("### 专为飞机人提供")
     st.divider()
 
-    if "all_questions" not in st.session_state:
-        reset_quiz_state()
-
-    # --- 侧边栏 (不变) ---
+    # --- 侧边栏 ---
     with st.sidebar:
         st.header("⚙️ 设置")
-        if st.button("🔄 重新开始", type="primary"):
-            total = len(st.session_state.all_questions)
-            correct = len(st.session_state.correct_ids)
-            incorrect = len(st.session_state.incorrect_ids)
-            wrong_review = len(st.session_state.wrong_question_list)
-            with st.expander("⚠️ 确认重新开始？", expanded=True):
-                st.warning("重新开始后，当前的答题进度、错题记录将全部清空！")
-                st.markdown("### 当前进度预览：")
-                st.write(f"- 总题数：{total}")
-                st.write(f"- 已掌握：{correct}")
-                st.write(f"- 错题数：{incorrect}")
-                st.write(f"- 需重点复习：{wrong_review}")
-                col1, col2 = st.columns(2)
-                with col1:
-                    if st.button("🚨 确认重置 (危险)", type="primary"):
-                        reset_quiz_state()
-                        st.rerun()
-                with col2:
-                    if st.button("❌ 取消"):
-                        st.rerun()
+        
+        # 重新开始按钮
+        if st.button("🔄 开始新一轮答题", type="primary", on_click=start_new_attempt):
+            st.rerun()
+
+        # 重置所有进度按钮
+        st.warning("⚠️ 以下操作将清空所有学习记录！")
+        if st.button("🗑️ 重置所有学习进度", type="secondary", on_click=reset_all_progress):
+            st.rerun()
+
         st.divider()
         st.header("📊 总进度")
         total_q = len(st.session_state.all_questions)
@@ -143,42 +162,47 @@ def main():
         incorrect_q = len(st.session_state.incorrect_ids)
         if total_q > 0:
             st.progress(correct_q / total_q, text=f"已掌握: {correct_q} / {total_q}")
-        st.write(f"未掌握 (本轮): {incorrect_q}")
+        st.write(f"未掌握: {incorrect_q}")
+
         st.divider()
-        st.header("📋 错题库 (错2次以上)")
-        num_wrong_to_review = len(st.session_state.wrong_question_list)
+        st.header("📋 错题库")
+        num_wrong_to_review = len(st.session_state.error_counts)
         st.metric("需重点复习", num_wrong_to_review)
         with st.expander("点击展开/收起错题库", expanded=False):
             if num_wrong_to_review == 0:
-                st.info("暂无需要重点复习的错题。")
+                st.info("暂无错题。")
             else:
-                for i, q in enumerate(st.session_state.wrong_question_list):
-                    error_count = st.session_state.error_counts[q['id']]
-                    with st.expander(f"第 {i+1} 题: {q['question'][:20]}... (错 {error_count} 次)"):
+                # 【核心修复】遍历 error_counts 字典来实现去重
+                for i, (q_id, error_count) in enumerate(st.session_state.error_counts.items(), 1):
+                    # 找到对应的题目
+                    q = next((q for q in st.session_state.all_questions if q['id'] == q_id), None)
+                    if not q: continue
+                    
+                    with st.expander(f"第 {i} 题: {q['question'][:30]}... (错 {error_count} 次)"):
                         st.write(f"**题干:** {q['question']}")
                         st.write("**选项:**")
                         for opt in q['options']:
                             st.write(f"- {opt}")
-                        last_wrong_answer = st.session_state.last_wrong_answers.get(q['id'])
+                        last_wrong_answer = st.session_state.last_wrong_answers.get(q_id)
                         if last_wrong_answer:
-                            st.markdown(f"**你上次答错的是：** <span style='color:red'>{last_wrong_answer}</span>", unsafe_allow_html=True)
+                            st.markdown(f"**上次答错:** <span style='color:red'>{last_wrong_answer}</span>", unsafe_allow_html=True)
                         correct_answer_text = next((opt for opt in q["options"] if opt.strip().startswith(q["answer"])), "【未找到】")
-                        st.markdown(f"**正确答案是：** <span style='color:green'>{correct_answer_text}</span>", unsafe_allow_html=True)
+                        st.markdown(f"**正确答案:** <span style='color:green'>{correct_answer_text}</span>", unsafe_allow_html=True)
                         if q.get("explanation"):
                             st.caption(f"**解析:** {q['explanation']}")
 
     # --- 主答题区 ---
     if not st.session_state.quiz_started:
         st.info(f"题库已加载，共 **{len(st.session_state.all_questions)}** 道题。")
-        if st.button("🚀 开始答题", type="primary"):
-            st.session_state.quiz_started = True
-            generate_new_batch()
+        if st.button("🚀 开始答题", type="primary", on_click=start_new_attempt):
             st.rerun()
         return
 
-    if st.session_state.quiz_finished:
+    if "quiz_finished" not in st.session_state or st.session_state.quiz_finished:
         st.balloons()
-        st.success("🎉 恭喜你！你已经掌握了所有题目！")
+        st.success("🎉 恭喜你！本轮练习完成！")
+        if st.button("🏁 查看本轮结果", type="primary"):
+            st.rerun() # 可以在这里添加查看本轮结果的逻辑
         return
 
     current_batch, current_idx = st.session_state.current_batch, st.session_state.current_question_idx
@@ -189,13 +213,6 @@ def main():
 
     current_question = current_batch[current_idx]
     question_id = current_question['id']
-
-    if not current_question['options'] or len(current_question['options']) == 0:
-        st.error(f"**错误：当前题目 (ID: {question_id}) 没有选项，已自动跳过。**")
-        st.session_state.current_question_idx += 1
-        if st.button("➡️ 继续下一题", type="primary"):
-            st.rerun()
-        return
 
     st.subheader(f"本轮: 第 {current_idx + 1}/{len(current_batch)} 题")
     st.write(f"**{current_question['question']}**")
@@ -213,11 +230,9 @@ def main():
 
     if not is_submitted:
         if st.button("✅ 提交答案", type="primary"):
-            # 【最终修复】直接检查 user_answer 是否为 None
             if user_answer is None:
                 st.warning("⚠️ 请至少选择一个选项后再提交！")
             else:
-                # 只有在 user_answer 有有效值时，才执行后续逻辑
                 st.session_state.submitted_answers[question_id] = user_answer
                 user_answer_letter = user_answer.split(".")[0].strip().upper()
                 is_correct = user_answer_letter == current_question["answer"]
@@ -225,24 +240,21 @@ def main():
                 if is_correct:
                     st.session_state.correct_ids.add(question_id)
                     st.session_state.incorrect_ids.discard(question_id)
+                    # 如果做对了，从错题库中移除
                     if question_id in st.session_state.error_counts:
                         del st.session_state.error_counts[question_id]
-                        if question_id in st.session_state.last_wrong_answers:
-                            del st.session_state.last_wrong_answers[question_id]
+                    if question_id in st.session_state.last_wrong_answers:
+                        del st.session_state.last_wrong_answers[question_id]
                 else:
                     st.session_state.incorrect_ids.add(question_id)
                     st.session_state.correct_ids.discard(question_id)
+                    # 如果做错了，更新错题库
                     st.session_state.error_counts[question_id] = st.session_state.error_counts.get(question_id, 0) + 1
                     st.session_state.last_wrong_answers[question_id] = user_answer
                 
-                st.session_state.wrong_question_list = [q for q in st.session_state.all_questions if q['id'] in st.session_state.error_counts and st.session_state.error_counts[q['id']] >= 2]
                 st.rerun()
     else:
-        # 这是最后一道防线，理论上现在不会再触发了
-        if not user_answer_text:
-            st.error("数据异常：未记录到您的答案。请点击侧边栏的“重新开始”。")
-            return
-        
+        st.divider()
         user_answer_letter = user_answer_text.split(".")[0].strip().upper()
         correct_answer_letter = current_question["answer"]
         is_correct = user_answer_letter == correct_answer_letter
@@ -265,4 +277,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
