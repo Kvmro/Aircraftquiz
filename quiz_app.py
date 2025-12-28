@@ -112,7 +112,8 @@ def reset_quiz_state():
     keys_to_delete = [
         'all_questions', 'correct_ids', 'incorrect_ids', 'current_batch',
         'current_question_idx', 'quiz_started', 'quiz_finished',
-        'submitted_answers', 'error_counts', 'last_wrong_answers', 'wrong_question_list'
+        'submitted_answers', 'error_counts', 'last_wrong_answers', 'wrong_question_list',
+        'temp_choices'
     ]
     for key in keys_to_delete:
         if key in st.session_state:
@@ -257,16 +258,16 @@ def main():
 
     if not is_submitted:
         if st.button("✅ 提交答案", type="primary"):
-            # 一个简单的防呆设计：如果用户没有改变默认选项（第一个）就提交，则提示
-            if user_answer == current_question["options"][0] and question_id not in st.session_state.get('temp_choices', {}):
+            # 防呆设计：判断用户是否真的选择了答案
+            if user_answer == current_question["options"][0] and question_id not in st.session_state.get('temp_choices', set()):
                 st.warning("请至少选择一个不同于默认的答案！")
-                # 使用一个临时状态来标记用户已经收到过提示，避免无限循环提示
                 if 'temp_choices' not in st.session_state:
                     st.session_state['temp_choices'] = set()
                 st.session_state['temp_choices'].add(question_id)
             else:
                 st.session_state.submitted_answers[question_id] = user_answer
-                user_answer_letter = user_answer.split(".")[0].strip().upper()
+                # 修复点1：提取答案字母时先判空
+                user_answer_letter = user_answer.split(".")[0].strip().upper() if user_answer else ""
                 is_correct = user_answer_letter == current_question["answer"]
 
                 if is_correct:
@@ -288,6 +289,12 @@ def main():
                 st.rerun()
     else:
         st.divider()
+        # 修复点2：关键修复 - 对user_answer_text判空，避免None.split()
+        if not user_answer_text:
+            st.error("未获取到提交的答案，请重新答题！")
+            del st.session_state.submitted_answers[question_id]
+            st.rerun()
+        
         user_answer_letter = user_answer_text.split(".")[0].strip().upper()
         correct_answer_letter = current_question["answer"]
         is_correct = user_answer_letter == correct_answer_letter
@@ -297,10 +304,10 @@ def main():
         else:
             st.error("❌ 回答错误。")
             st.markdown(f"**你选择了：** <span style='color:red'>{user_answer_text}</span>", unsafe_allow_html=True)
-
+        
         correct_answer_text = next((opt for opt in current_question["options"] if opt.strip().startswith(correct_answer_letter)), "【未找到】")
         st.markdown(f"**正确答案是：** <span style='color:green'>{correct_answer_text}</span>", unsafe_allow_html=True)
-
+        
         if current_question.get("explanation"):
             st.caption(f"**解析:** {current_question['explanation']}")
 
