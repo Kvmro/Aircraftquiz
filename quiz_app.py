@@ -3,9 +3,9 @@ import json
 import random
 
 # --- 页面配置 ---
-st.set_page_config(page_title="飞机刷题软件1.5", page_icon="✈️", layout="centered")
+st.set_page_config(page_title="飞机人电子系统刷题系统", page_icon="✈️", layout="centered")
 
-# --- 自定义CSS (不变) ---
+# --- 自定义CSS (手机适配+选项美化+字体紧凑，不变) ---
 st.markdown("""
 <style>
     div[data-baseweb="radio"] { display: flex; flex-direction: column; gap: 0.5rem; }
@@ -47,7 +47,7 @@ def load_questions():
         return normalized_questions
     except Exception as e: st.error(f"加载题库失败: {e}"); st.stop()
 
-# --- 重置/生成批次函数 (不变) ---
+# --- 重置/生成批次函数 (重置清空所有数据含错题库，不变) ---
 def reset_quiz_state():
     keys_to_delete = [
         'all_questions', 'correct_ids', 'incorrect_ids', 'current_batch', 
@@ -88,16 +88,17 @@ def generate_new_batch():
     st.session_state.submitted_answers = {}
     st.session_state.quiz_finished = not new_batch
 
-# --- 主应用逻辑 (【核心修复】) ---
+# --- 主应用逻辑 (核心修改：标题+小标题，其他所有功能不变) ---
 def main():
-    st.title("✈️ 飞机刷题软件 1.5")
-    st.markdown("专为飞机人刷题")
+    # ========== 已修改：标题+小标题 ==========
+    st.title("✈️ 飞机人电子系统刷题系统")
+    st.markdown("### 专为飞机人提供")
     st.divider()
 
     if "all_questions" not in st.session_state:
         reset_quiz_state()
 
-    # --- 侧边栏 (【核心修复】) ---
+    # --- 侧边栏 (重新开始二次确认+错题库+进度，不变) ---
     with st.sidebar:
         st.header("⚙️ 设置")
         
@@ -117,7 +118,6 @@ def main():
                 
                 col1, col2 = st.columns(2)
                 with col1:
-                    # 【修复】将 type="destructive" 改为 type="primary"，并修改文字以警示
                     if st.button("🚨 确认重置 (危险)", type="primary"):
                         reset_quiz_state()
                         st.rerun()
@@ -151,7 +151,7 @@ def main():
                         st.markdown(f"**正确答案是：** <span style='color:green'>{correct_answer_text}</span>", unsafe_allow_html=True)
                         if q.get("explanation"): st.caption(f"**解析:** {q['explanation']}")
 
-    # --- 主内容区 (不变) ---
+    # --- 答题区 (选项高亮+答错提示正确答案+提交后禁用，不变) ---
     if not st.session_state.quiz_started:
         st.info(f"题库已加载，共 **{len(st.session_state.all_questions)}** 道题。")
         if st.button("🚀 开始答题", type="primary"):
@@ -191,7 +191,7 @@ def main():
     if not is_submitted:
         if st.button("✅ 提交答案", type="primary"):
             if user_answer == current_question["options"][0] and not is_submitted and question_id not in st.session_state.get('temp_choices', {}):
-                st.warning("请选择一个答案！")
+                st.warning("请先选择一个答案！")
             else:
                 st.session_state.submitted_answers[question_id] = user_answer
                 user_answer_letter = user_answer.split(".")[0].strip().upper()
@@ -236,4 +236,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
