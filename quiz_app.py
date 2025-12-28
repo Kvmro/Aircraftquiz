@@ -1,6 +1,7 @@
 import streamlit as st
 import json
 import random
+import re
 
 # --- 页面配置 ---
 st.set_page_config(page_title="智能刷题软件", page_icon="🧠", layout="centered")
@@ -12,6 +13,33 @@ def load_questions():
     try:
         with open("question_bank.0.1.json", "r", encoding="utf-8") as f:
             text = f.read()
+
+        # 小工具：检测与修复可能的 mojibake（编码错乱导致的乱码）
+        def _cjk_ratio(s):
+            if not s:
+                return 0.0
+            c = sum(1 for ch in s if '\u4e00' <= ch <= '\u9fff')
+            return c / max(1, len(s))
+
+        def _repair_mojibake(s):
+            # 若字符串为空或已包含较多中文且没有替换字符，视为健康
+            if not s or (_cjk_ratio(s) > 0.1 and '\uFFFD' not in s):
+                return s
+            best = s
+            best_score = _cjk_ratio(s)
+            enc_pairs = [('latin-1','gbk'), ('latin-1','cp936'), ('latin-1','utf-8'), ('utf-8','gbk'), ('cp1252','gbk')]
+            for a, b in enc_pairs:
+                try:
+                    bts = s.encode(a, errors='replace')
+                    cand = bts.decode(b, errors='replace')
+                    score = _cjk_ratio(cand)
+                    # 优先选择产生更多中文字符的候选结果
+                    if score > best_score + 0.01:
+                        best = cand
+                        best_score = score
+                except Exception:
+                    continue
+            return best
 
         # 先尝试正常解析
         try:
@@ -47,27 +75,92 @@ def load_questions():
             else:
                 raise json.JSONDecodeError("无法解析 JSON 对象", text, 0)
 
-        # 规范化字段名，支持中文题库结构
+        # 规范化字段名，支持中文题库结构（并在键名被损坏时基于值类型推断）
         questions = []
         for item in data:
+            # 先尝试常见字段名
             q_text = item.get('question') or item.get('题干') or item.get('题目') or item.get('stem') or ''
             options = item.get('options') or item.get('选项') or []
             answer = item.get('answer') or item.get('正确答案') or ''
             explanation = item.get('explanation') or item.get('解析') or ''
 
-            # 如果答案为多项（使用竖线分隔），取第一个选项作为主要答案以兼容单选模式
+            # 如果键被损坏（中文键变成乱码），基于字段值类型做智能推断
+            if (not q_text) and (not options or options == []) and (not answer):
+                maybe_question = None
+                maybe_options = None
+                maybe_answer = None
+                for v in item.values():
+                    if isinstance(v, list) and all(isinstance(x, str) for x in v) and len(v) >= 2:
+                        maybe_options = v
+                    elif isinstance(v, str):
+                        # 如果是选项串，通常包含换行或以 'A.' 'B.' 等分行
+                        if '\n' in v or re.search(r'^[A-Z]\.', v.strip()) or ('；' in v or ';' in v):
+                            # 尝试分割为选项
+                            parts = [vv.strip() for vv in re.split(r'[\r\n；;|]', v) if vv.strip()]
+                            if len(parts) >= 2:
+                                maybe_options = parts
+                                continue
+                        # 如果看起来像答案（例如 'A' 或 'A|B' 或 'A,B'）
+                        if re.fullmatch(r'[A-Z](?:[|,][A-Z])*', v.strip()):
+                            maybe_answer = re.match(r'[A-Z]', v.strip()).group(0)
+                        elif len(v.strip()) <= 5 and re.fullmatch(r'[\u0041-\u005A]+', v.strip()):
+                            maybe_answer = v.strip()
+                        else:
+                            # 长文本视为题干/题目
+                            if len(v.strip()) > 10:
+                                maybe_question = v.strip()
+                    elif isinstance(v, int):
+                        # 序号，忽略
+                        pass
+
+                if maybe_options:
+                    options = maybe_options
+                if maybe_answer:
+                    answer = maybe_answer
+                if maybe_question:
+                    q_text = maybe_question
+
+            # 处理答案格式：多项取第一个，或从 'A.' 'A. 内容' 中提取字母
             if isinstance(answer, str) and '|' in answer:
                 answer = answer.split('|')[0]
+            if isinstance(answer, str):
+                m = re.search(r'([A-Z])', answer)
+                if m:
+                    answer = m.group(1)
+                else:
+                    answer = answer.strip()
 
+            # 确保选项为 list
             if not isinstance(options, list):
-                options = [options]
+                if isinstance(options, str):
+                    opts = [o.strip() for o in re.split(r'[\r\n；;|]', options) if o.strip()]
+                    options = opts if opts else [options.strip()]
+                else:
+                    options = [str(options)]
+
+            # 若仍未识别出题干，尝试从任意字符串值中挑一个较长的作为题干
+            if not q_text:
+                for v in item.values():
+                    if isinstance(v, str) and len(v.strip()) > 10:
+                        q_text = v.strip()
+                        break
+
+            # 尝试修复可能的编码错乱导致的乱码
+            q_text = _repair_mojibake(q_text)
+            options = [_repair_mojibake(o) for o in options]
+            explanation = _repair_mojibake(explanation)
 
             questions.append({
                 'question': q_text,
                 'options': options,
-                'answer': answer.strip(),
+                'answer': answer.strip() if isinstance(answer, str) else str(answer),
                 'explanation': explanation
             })
+
+        # 报告可能的编码损坏问题，供用户手动检查
+        corrupted = [i for i,q in enumerate(questions) if '\uFFFD' in q['question'] or _cjk_ratio(q['question']) < 0.05]
+        if corrupted:
+            st.warning(f"检测到 {len(corrupted)} 道题目可能存在编码损坏（显示乱码），建议检查源文件或提供原始备份以便恢复。 示例序号: {corrupted[:5]}")
 
         return questions
     except FileNotFoundError:
