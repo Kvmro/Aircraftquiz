@@ -63,7 +63,6 @@ def load_questions():
 
 # --- 【新增】开始新一轮答题 (不清空历史记录) ---
 def start_new_attempt():
-    # 只重置与本轮答题相关的状态
     keys_to_reset_for_new_attempt = [
         'current_batch', 'current_question_idx', 'submitted_answers', 'quiz_finished'
     ]
@@ -71,19 +70,13 @@ def start_new_attempt():
         if key in st.session_state:
             del st.session_state[key]
     
-    # 确保刷题状态是开启的
     st.session_state.quiz_started = True
-    
-    # 生成新的题目批次
     generate_new_batch()
 
 # --- 【新增】重置所有学习进度 (清空一切) ---
 def reset_all_progress():
-    # 清除所有状态，包括历史记录
     for key in list(st.session_state.keys()):
         del st.session_state[key]
-    
-    # 重新初始化应用
     initialize_app()
 
 # --- 【重构】初始化应用状态 ---
@@ -91,35 +84,32 @@ def initialize_app():
     all_questions = load_questions()
     random.shuffle(all_questions)
     
-    # 初始化持久化数据
     st.session_state.all_questions = all_questions
     st.session_state.correct_ids = set()
     st.session_state.incorrect_ids = set()
-    st.session_state.error_counts = {}  # {question_id: count}
-    st.session_state.last_wrong_answers = {} # {question_id: answer_text}
+    st.session_state.error_counts = {}
+    st.session_state.last_wrong_answers = {}
 
-    # 初始化本轮答题状态
     st.session_state.current_batch = []
     st.session_state.current_question_idx = 0
     st.session_state.quiz_started = False
     st.session_state.quiz_finished = False
     st.session_state.submitted_answers = {}
+    # 初始化确认对话框的状态
+    st.session_state.show_reset_confirmation = False
 
 def generate_new_batch():
     batch_size = 100
     new_batch = []
     
-    # 优先加入错题
     incorrect_questions = [q for q in st.session_state.all_questions if q['id'] in st.session_state.incorrect_ids]
     new_batch.extend(incorrect_questions)
     
-    # 加入少量已掌握的题目用于复习
     correct_questions = [q for q in st.session_state.all_questions if q['id'] in st.session_state.correct_ids]
     if correct_questions:
         num_review = min(20, len(correct_questions))
         new_batch.extend(random.sample(correct_questions, num_review))
         
-    # 加入新题
     remaining_questions = [q for q in st.session_state.all_questions if q['id'] not in st.session_state.correct_ids and q['id'] not in st.session_state.incorrect_ids]
     needed = batch_size - len(new_batch)
     if needed > 0 and remaining_questions:
@@ -134,7 +124,6 @@ def generate_new_batch():
 
 # --- 主应用逻辑 ---
 def main():
-    # 初始化应用状态
     if "all_questions" not in st.session_state:
         initialize_app()
 
@@ -146,14 +135,30 @@ def main():
     with st.sidebar:
         st.header("⚙️ 设置")
         
-        # 重新开始按钮
         if st.button("🔄 开始新一轮答题", type="primary", on_click=start_new_attempt):
             st.rerun()
 
-        # 重置所有进度按钮
-        st.warning("⚠️ 以下操作将清空所有学习记录！")
-        if st.button("🗑️ 重置所有学习进度", type="secondary", on_click=reset_all_progress):
-            st.rerun()
+        st.markdown("---") # 视觉分隔线
+        st.subheader("⚠️ 危险操作")
+
+        # 【核心改动】二次确认逻辑
+        if not st.session_state.show_reset_confirmation:
+            # 初始状态：只显示一个按钮
+            if st.button("🗑️ 重置所有学习进度", type="secondary"):
+                st.session_state.show_reset_confirmation = True
+                st.rerun() # 立即刷新以显示确认框
+        else:
+            # 确认状态：显示警告和两个按钮
+            st.error("**此操作不可恢复！**\n\n您确定要清空所有的学习记录、已掌握、未掌握和错题库吗？")
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("🚨 确认重置", type="primary"):
+                    reset_all_progress()
+                    st.rerun()
+            with col2:
+                if st.button("❌ 取消"):
+                    st.session_state.show_reset_confirmation = False
+                    st.rerun()
 
         st.divider()
         st.header("📊 总进度")
@@ -172,9 +177,7 @@ def main():
             if num_wrong_to_review == 0:
                 st.info("暂无错题。")
             else:
-                # 【核心修复】遍历 error_counts 字典来实现去重
                 for i, (q_id, error_count) in enumerate(st.session_state.error_counts.items(), 1):
-                    # 找到对应的题目
                     q = next((q for q in st.session_state.all_questions if q['id'] == q_id), None)
                     if not q: continue
                     
@@ -191,7 +194,7 @@ def main():
                         if q.get("explanation"):
                             st.caption(f"**解析:** {q['explanation']}")
 
-    # --- 主答题区 ---
+    # --- 主答题区 (逻辑不变) ---
     if not st.session_state.quiz_started:
         st.info(f"题库已加载，共 **{len(st.session_state.all_questions)}** 道题。")
         if st.button("🚀 开始答题", type="primary", on_click=start_new_attempt):
@@ -202,7 +205,7 @@ def main():
         st.balloons()
         st.success("🎉 恭喜你！本轮练习完成！")
         if st.button("🏁 查看本轮结果", type="primary"):
-            st.rerun() # 可以在这里添加查看本轮结果的逻辑
+            st.rerun()
         return
 
     current_batch, current_idx = st.session_state.current_batch, st.session_state.current_question_idx
@@ -240,7 +243,6 @@ def main():
                 if is_correct:
                     st.session_state.correct_ids.add(question_id)
                     st.session_state.incorrect_ids.discard(question_id)
-                    # 如果做对了，从错题库中移除
                     if question_id in st.session_state.error_counts:
                         del st.session_state.error_counts[question_id]
                     if question_id in st.session_state.last_wrong_answers:
@@ -248,7 +250,6 @@ def main():
                 else:
                     st.session_state.incorrect_ids.add(question_id)
                     st.session_state.correct_ids.discard(question_id)
-                    # 如果做错了，更新错题库
                     st.session_state.error_counts[question_id] = st.session_state.error_counts.get(question_id, 0) + 1
                     st.session_state.last_wrong_answers[question_id] = user_answer
                 
