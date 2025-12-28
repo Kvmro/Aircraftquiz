@@ -5,81 +5,24 @@ import random
 # --- 页面配置 ---
 st.set_page_config(page_title="飞机刷题软件1.2", page_icon="✈️", layout="centered")
 
-# --- 【核心优化】自定义CSS，调小字体和间距 ---
+# --- 自定义CSS (不变) ---
 st.markdown("""
 <style>
-    /* 针对手机端优化Radio组件，使其变为宽大的按钮 */
-    div[data-baseweb="radio"] {
-        display: flex;
-        flex-direction: column;
-        gap: 0.5rem; /* 选项之间的间距 */
-    }
-    div[data-baseweb="radio"] > div {
-        display: flex;
-        align-items: center;
-        width: 100% !important;
-        /* 【优化】减小内边距，让按钮更紧凑 */
-        padding: 0.5rem 0.75rem;
-        border: 1px solid #d1d5db; /* 灰色边框 */
-        border-radius: 0.5rem;
-        background-color: #f9fafb; /* 浅灰色背景 */
-        transition: all 0.2s ease;
-        cursor: pointer;
-    }
-    /* 选中时的样式 */
-    div[data-baseweb="radio"] > div[aria-checked="true"] {
-        border-color: #2563eb; /* 蓝色边框 */
-        background-color: #eff6ff; /* 浅蓝色背景 */
-        font-weight: bold;
-    }
-    /* 鼠标悬停或触摸时的效果 */
-    div[data-baseweb="radio"] > div:hover {
-        border-color: #93c5fd; /* 更深的蓝色边框 */
-        background-color: #dbeafe; /* 更深的浅蓝色背景 */
-    }
-    /* 隐藏原始的圆形单选框 */
-    div[data-baseweb="radio"] > div > div:first-child {
-        display: none;
-    }
-    /* 让选项文字靠左对齐 */
-    div[data-baseweb="radio"] > div > div:last-child {
-        flex-grow: 1;
-        text-align: left;
-        /* 【优化】调小选项文字大小 */
-        font-size: 0.9rem;
-    }
-    /* 优化其他元素的手机显示 */
-    .stButton > button {
-        width: 100%;
-        /* 【优化】调小按钮文字大小 */
-        font-size: 0.9rem;
-        /* 【优化】减小按钮内边距 */
-        padding-top: 0.5rem;
-        padding-bottom: 0.5rem;
-    }
-    .stSuccess, .stError, .stWarning {
-        /* 【优化】减小提示信息内边距 */
-        padding: 0.75rem;
-        border-radius: 0.5rem;
-        /* 【优化】调小提示信息文字大小 */
-        font-size: 1rem;
-    }
-    .stCaption {
-        /* 【优化】调小解析文字大小 */
-        font-size: 0.85rem;
-        line-height: 1.5;
-    }
-    /* 【优化】调小侧边栏标题和文字大小 */
-    .sidebar .stHeader {
-        font-size: 1.1rem;
-    }
-    .sidebar .stMarkdown, .sidebar .stText {
-        font-size: 0.9rem;
-    }
+    div[data-baseweb="radio"] { display: flex; flex-direction: column; gap: 0.5rem; }
+    div[data-baseweb="radio"] > div { display: flex; align-items: center; width: 100% !important; padding: 0.5rem 0.75rem; border: 1px solid #d1d5db; border-radius: 0.5rem; background-color: #f9fafb; transition: all 0.2s ease; cursor: pointer; }
+    div[data-baseweb="radio"] > div[aria-checked="true"] { border-color: #2563eb; background-color: #eff6ff; font-weight: bold; }
+    div[data-baseweb="radio"] > div:hover { border-color: #93c5fd; background-color: #dbeafe; }
+    div[data-baseweb="radio"] > div > div:first-child { display: none; }
+    div[data-baseweb="radio"] > div > div:last-child { flex-grow: 1; text-align: left; font-size: 0.9rem; }
+    .stButton > button { width: 100%; font-size: 0.9rem; padding-top: 0.5rem; padding-bottom: 0.5rem; }
+    .stSuccess, .stError, .stWarning { padding: 0.75rem; border-radius: 0.5rem; font-size: 1rem; }
+    .stCaption { font-size: 0.85rem; line-height: 1.5; }
+    .sidebar .stHeader { font-size: 1.1rem; }
+    .sidebar .stMarkdown, .sidebar .stText { font-size: 0.9rem; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- 加载题库 (此部分保持不变) ---
+# --- 加载题库 (不变) ---
 @st.cache_data
 def load_questions():
     try:
@@ -104,8 +47,19 @@ def load_questions():
         return normalized_questions
     except Exception as e: st.error(f"加载题库失败: {e}"); st.stop()
 
-# --- 重置/生成批次函数 (此部分保持不变) ---
+# --- 重置/生成批次函数 (【核心修复】) ---
 def reset_quiz_state():
+    """重置所有与测验相关的会话状态，包括错题库"""
+    # 【修复】增加错题库相关的状态变量到删除列表
+    keys_to_delete = [
+        'all_questions', 'correct_ids', 'incorrect_ids', 'current_batch', 
+        'current_question_idx', 'quiz_started', 'quiz_finished', 
+        'submitted_answers', 'error_counts', 'last_wrong_answers', 'wrong_question_list'
+    ]
+    for key in keys_to_delete:
+        if key in st.session_state:
+            del st.session_state[key]
+
     all_questions = load_questions()
     random.shuffle(all_questions)
     st.session_state.all_questions = all_questions
@@ -136,9 +90,8 @@ def generate_new_batch():
     st.session_state.submitted_answers = {}
     st.session_state.quiz_finished = not new_batch
 
-# --- 主应用逻辑 (已更新) ---
+# --- 主应用逻辑 (不变) ---
 def main():
-    # 【优化】调小主标题
     st.title("✈️ 飞机刷题软件 1.2")
     st.markdown("专为手机优化，界面更紧凑，体验更流畅！")
     st.divider()
@@ -146,12 +99,32 @@ def main():
     if "all_questions" not in st.session_state:
         reset_quiz_state()
 
-    # --- 侧边栏 (已更新) ---
+    # --- 侧边栏 (不变) ---
     with st.sidebar:
         st.header("⚙️ 设置")
+        
         if st.button("🔄 重新开始", type="primary"):
-            reset_quiz_state()
-            st.rerun()
+            total = len(st.session_state.all_questions)
+            correct = len(st.session_state.correct_ids)
+            incorrect = len(st.session_state.incorrect_ids)
+            wrong_review = len(st.session_state.wrong_question_list)
+            
+            with st.expander("⚠️ 确认重新开始？", expanded=True):
+                st.warning("重新开始后，当前的答题进度、错题记录将全部清空！")
+                st.markdown("### 当前进度预览：")
+                st.write(f"- 总题数：{total}")
+                st.write(f"- 已掌握：{correct}")
+                st.write(f"- 错题数：{incorrect}")
+                st.write(f"- 需重点复习：{wrong_review}")
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("✅ 确认重置", type="destructive"):
+                        reset_quiz_state()
+                        st.rerun()
+                with col2:
+                    if st.button("❌ 取消"):
+                        st.rerun()
         
         st.divider()
         st.header("📊 总进度")
@@ -179,7 +152,7 @@ def main():
                         st.markdown(f"**正确答案是：** <span style='color:green'>{correct_answer_text}</span>", unsafe_allow_html=True)
                         if q.get("explanation"): st.caption(f"**解析:** {q['explanation']}")
 
-    # --- 主内容区 ---
+    # --- 主内容区 (不变) ---
     if not st.session_state.quiz_started:
         st.info(f"题库已加载，共 **{len(st.session_state.all_questions)}** 道题。")
         if st.button("🚀 开始答题", type="primary"):
@@ -202,28 +175,23 @@ def main():
     current_question = current_batch[current_idx]
     question_id = current_question['id']
     
-    # 【优化】调小题目序号
     st.subheader(f"本轮: 第 {current_idx + 1}/{len(current_batch)} 题")
     st.write(f"**{current_question['question']}**")
     
     is_submitted = question_id in st.session_state.submitted_answers
     user_answer_text = st.session_state.submitted_answers.get(question_id)
     
-    # 使用美化后的 st.radio
     user_answer = st.radio(
         "请选择你的答案：",
         current_question["options"],
         key=f"q_{question_id}",
         index=current_question["options"].index(user_answer_text) if user_answer_text else None,
-        disabled=is_submitted # 提交后禁用选择
+        disabled=is_submitted
     )
 
-    # 如果未提交，显示提交按钮
     if not is_submitted:
         if st.button("✅ 提交答案", type="primary"):
-            # st.radio 默认会选中第一个，所以需要判断用户是否真的选择了
             if user_answer == current_question["options"][0] and not is_submitted and question_id not in st.session_state.get('temp_choices', {}):
-                # 这是一个技巧，用来判断用户是否是第一次加载页面就点了提交
                 st.warning("请选择一个答案！")
             else:
                 st.session_state.submitted_answers[question_id] = user_answer
@@ -246,7 +214,6 @@ def main():
 
                 st.rerun()
     else:
-        # 提交后，显示结果和高亮
         st.divider()
         user_answer_letter = user_answer_text.split(".")[0].strip().upper()
         correct_answer_letter = current_question["answer"]
