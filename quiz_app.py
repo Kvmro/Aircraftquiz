@@ -10,13 +10,71 @@ st.set_page_config(page_title="智能刷题软件", page_icon="🧠", layout="ce
 def load_questions():
     """加载并缓存题库"""
     try:
-        with open("question_bank.json", "r", encoding="utf-8") as f:
-            return json.load(f)
+        with open("question_bank.0.1.json", "r", encoding="utf-8") as f:
+            text = f.read()
+
+        # 先尝试正常解析
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError:
+            # 如果不是标准 JSON 数组，尝试从文本中逐个提取 JSON 对象（容错处理）
+            objs = []
+            i = 0
+            n = len(text)
+            while i < n:
+                if text[i] == '{':
+                    start = i
+                    depth = 0
+                    while i < n:
+                        if text[i] == '{':
+                            depth += 1
+                        elif text[i] == '}':
+                            depth -= 1
+                            if depth == 0:
+                                end = i + 1
+                                snippet = text[start:end]
+                                try:
+                                    objs.append(json.loads(snippet))
+                                except Exception:
+                                    pass
+                                break
+                        i += 1
+                else:
+                    i += 1
+
+            if objs:
+                data = objs
+            else:
+                raise json.JSONDecodeError("无法解析 JSON 对象", text, 0)
+
+        # 规范化字段名，支持中文题库结构
+        questions = []
+        for item in data:
+            q_text = item.get('question') or item.get('题干') or item.get('题目') or item.get('stem') or ''
+            options = item.get('options') or item.get('选项') or []
+            answer = item.get('answer') or item.get('正确答案') or ''
+            explanation = item.get('explanation') or item.get('解析') or ''
+
+            # 如果答案为多项（使用竖线分隔），取第一个选项作为主要答案以兼容单选模式
+            if isinstance(answer, str) and '|' in answer:
+                answer = answer.split('|')[0]
+
+            if not isinstance(options, list):
+                options = [options]
+
+            questions.append({
+                'question': q_text,
+                'options': options,
+                'answer': answer.strip(),
+                'explanation': explanation
+            })
+
+        return questions
     except FileNotFoundError:
-        st.error("错误：未找到 'question_bank.json' 文件。请确保该文件与脚本在同一目录下。")
+        st.error("错误：未找到 'question_bank.0.1.json' 文件。请确保该文件与脚本在同一目录下。")
         st.stop()
-    except json.JSONDecodeError:
-        st.error("错误：'question_bank.json' 文件格式不正确，请检查。")
+    except Exception as e:
+        st.error(f"错误：无法解析 'question_bank.0.1.json'：{e}")
         st.stop()
 
 # --- 重置测验状态 ---
@@ -65,7 +123,7 @@ def main():
     # --- 开始/答题逻辑 ---
     if not st.session_state.quiz_started:
         if not st.session_state.all_questions:
-            st.warning("题库中没有题目，请先在 'question_bank.json' 中添加题目。")
+            st.warning("题库中没有题目，请先在 'question_bank.0.1.json' 中添加题目。")
             return
             
         st.info(f"题库已加载，共 **{len(st.session_state.all_questions)}** 道题。")
