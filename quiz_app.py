@@ -3,9 +3,9 @@ import json
 import random
 
 # --- 页面配置 ---
-st.set_page_config(page_title="智能刷题软件 (最终版)", page_icon="✅", layout="centered")
+st.set_page_config(page_title="飞机刷题软件1.2", page_icon="✈️", layout="centered")
 
-# --- 【核心优化】自定义CSS，将Radio按钮美化成大按钮 ---
+# --- 【核心优化】自定义CSS，调小字体和间距 ---
 st.markdown("""
 <style>
     /* 针对手机端优化Radio组件，使其变为宽大的按钮 */
@@ -18,7 +18,8 @@ st.markdown("""
         display: flex;
         align-items: center;
         width: 100% !important;
-        padding: 0.75rem 1rem;
+        /* 【优化】减小内边距，让按钮更紧凑 */
+        padding: 0.5rem 0.75rem;
         border: 1px solid #d1d5db; /* 灰色边框 */
         border-radius: 0.5rem;
         background-color: #f9fafb; /* 浅灰色背景 */
@@ -44,23 +45,36 @@ st.markdown("""
     div[data-baseweb="radio"] > div > div:last-child {
         flex-grow: 1;
         text-align: left;
-        font-size: 1rem;
+        /* 【优化】调小选项文字大小 */
+        font-size: 0.9rem;
     }
     /* 优化其他元素的手机显示 */
     .stButton > button {
         width: 100%;
-        font-size: 1rem;
-        padding-top: 0.75rem;
-        padding-bottom: 0.75rem;
+        /* 【优化】调小按钮文字大小 */
+        font-size: 0.9rem;
+        /* 【优化】减小按钮内边距 */
+        padding-top: 0.5rem;
+        padding-bottom: 0.5rem;
     }
     .stSuccess, .stError, .stWarning {
-        padding: 1rem;
+        /* 【优化】减小提示信息内边距 */
+        padding: 0.75rem;
         border-radius: 0.5rem;
-        font-size: 1.1rem;
+        /* 【优化】调小提示信息文字大小 */
+        font-size: 1rem;
     }
     .stCaption {
-        font-size: 0.9rem;
+        /* 【优化】调小解析文字大小 */
+        font-size: 0.85rem;
         line-height: 1.5;
+    }
+    /* 【优化】调小侧边栏标题和文字大小 */
+    .sidebar .stHeader {
+        font-size: 1.1rem;
+    }
+    .sidebar .stMarkdown, .sidebar .stText {
+        font-size: 0.9rem;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -124,14 +138,15 @@ def generate_new_batch():
 
 # --- 主应用逻辑 (已更新) ---
 def main():
-    st.title("✅ 智能刷题软件 (最终版)")
-    st.markdown("专为手机优化，点击大按钮答题，体验更流畅！")
+    # 【优化】调小主标题
+    st.title("✈️ 飞机刷题软件 1.2")
+    st.markdown("专为手机优化，界面更紧凑，体验更流畅！")
     st.divider()
 
     if "all_questions" not in st.session_state:
         reset_quiz_state()
 
-    # --- 侧边栏 (已更新，移除多余开关) ---
+    # --- 侧边栏 (已更新) ---
     with st.sidebar:
         st.header("⚙️ 设置")
         if st.button("🔄 重新开始", type="primary"):
@@ -187,13 +202,14 @@ def main():
     current_question = current_batch[current_idx]
     question_id = current_question['id']
     
+    # 【优化】调小题目序号
     st.subheader(f"本轮: 第 {current_idx + 1}/{len(current_batch)} 题")
     st.write(f"**{current_question['question']}**")
     
     is_submitted = question_id in st.session_state.submitted_answers
     user_answer_text = st.session_state.submitted_answers.get(question_id)
     
-    # 【核心改动】使用美化后的 st.radio
+    # 使用美化后的 st.radio
     user_answer = st.radio(
         "请选择你的答案：",
         current_question["options"],
@@ -205,8 +221,10 @@ def main():
     # 如果未提交，显示提交按钮
     if not is_submitted:
         if st.button("✅ 提交答案", type="primary"):
-            if not user_answer: # st.radio 在未选择时返回第一个选项，所以这里的判断可能需要调整
-                st.warning("请先选择一个答案！")
+            # st.radio 默认会选中第一个，所以需要判断用户是否真的选择了
+            if user_answer == current_question["options"][0] and not is_submitted and question_id not in st.session_state.get('temp_choices', {}):
+                # 这是一个技巧，用来判断用户是否是第一次加载页面就点了提交
+                st.warning("请选择一个答案！")
             else:
                 st.session_state.submitted_answers[question_id] = user_answer
                 user_answer_letter = user_answer.split(".")[0].strip().upper()
