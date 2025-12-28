@@ -107,7 +107,7 @@ def generate_new_batch():
 # --- 主应用逻辑 (【最终修复】采用最直接的 None 检查) ---
 def main():
     st.title("✈️ 飞机人电子系统刷题系统")
-    st.markdown("### 专为飞机人提供")
+    st.markdown("### 专为飞机人提供,有bug请提出")
     st.divider()
 
     if "all_questions" not in st.session_state:
@@ -265,3 +265,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
