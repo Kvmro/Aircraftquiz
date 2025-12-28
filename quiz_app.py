@@ -5,72 +5,24 @@ import random
 # --- 页面配置 ---
 st.set_page_config(page_title="飞机人电子系统刷题系统", page_icon="✈️", layout="centered")
 
-# --- 自定义CSS (手机适配+选项美化+字体紧凑) ---
+# --- 自定义CSS (不变) ---
 st.markdown("""
 <style>
-    /* 美化Radio选项为大按钮 */
-    div[data-baseweb="radio"] {
-        display: flex;
-        flex-direction: column;
-        gap: 0.5rem;
-    }
-    div[data-baseweb="radio"] > div {
-        display: flex;
-        align-items: center;
-        width: 100% !important;
-        padding: 0.5rem 0.75rem;
-        border: 1px solid #d1d5db;
-        border-radius: 0.5rem;
-        background-color: #f9fafb;
-        transition: all 0.2s ease;
-        cursor: pointer;
-    }
-    div[data-baseweb="radio"] > div[aria-checked="true"] {
-        border-color: #2563eb;
-        background-color: #eff6ff;
-        font-weight: bold;
-    }
-    div[data-baseweb="radio"] > div:hover {
-        border-color: #93c5fd;
-        background-color: #dbeafe;
-    }
-    div[data-baseweb="radio"] > div > div:first-child {
-        display: none;
-    }
-    div[data-baseweb="radio"] > div > div:last-child {
-        flex-grow: 1;
-        text-align: left;
-        font-size: 0.9rem;
-    }
-    /* 统一按钮样式 */
-    .stButton > button {
-        width: 100%;
-        font-size: 0.9rem;
-        padding-top: 0.5rem;
-        padding-bottom: 0.5rem;
-    }
-    /* 优化提示信息 */
-    .stSuccess, .stError, .stWarning {
-        padding: 0.75rem;
-        border-radius: 0.5rem;
-        font-size: 1rem;
-    }
-    /* 优化解析文字 */
-    .stCaption {
-        font-size: 0.85rem;
-        line-height: 1.5;
-    }
-    /* 优化侧边栏文字 */
-    .sidebar .stHeader {
-        font-size: 1.1rem;
-    }
-    .sidebar .stMarkdown, .sidebar .stText {
-        font-size: 0.9rem;
-    }
+    div[data-baseweb="radio"] { display: flex; flex-direction: column; gap: 0.5rem; }
+    div[data-baseweb="radio"] > div { display: flex; align-items: center; width: 100% !important; padding: 0.5rem 0.75rem; border: 1px solid #d1d5db; border-radius: 0.5rem; background-color: #f9fafb; transition: all 0.2s ease; cursor: pointer; }
+    div[data-baseweb="radio"] > div[aria-checked="true"] { border-color: #2563eb; background-color: #eff6ff; font-weight: bold; }
+    div[data-baseweb="radio"] > div:hover { border-color: #93c5fd; background-color: #dbeafe; }
+    div[data-baseweb="radio"] > div > div:first-child { display: none; }
+    div[data-baseweb="radio"] > div > div:last-child { flex-grow: 1; text-align: left; font-size: 0.9rem; }
+    .stButton > button { width: 100%; font-size: 0.9rem; padding-top: 0.5rem; padding-bottom: 0.5rem; }
+    .stSuccess, .stError, .stWarning { padding: 0.75rem; border-radius: 0.5rem; font-size: 1rem; }
+    .stCaption { font-size: 0.85rem; line-height: 1.5; }
+    .sidebar .stHeader { font-size: 1.1rem; }
+    .sidebar .stMarkdown, .sidebar .stText { font-size: 0.9rem; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- 加载题库 (带完整的异常处理) ---
+# --- 加载题库 (【核心修复1】过滤无效题目) ---
 @st.cache_data
 def load_questions():
     try:
@@ -84,11 +36,14 @@ def load_questions():
             q_text = item.get('question') or item.get('题干')
             options = item.get('options') or item.get('选项')
             answer = item.get('answer') or item.get('正确答案')
-            explanation = item.get('explanation') or item.get('解析') or ''
-            if not q_text or not options or not answer:
+            
+            # 【修复】检查题目是否完整，特别是选项不能为空
+            if not q_text or not options or not answer or not isinstance(options, list) or len(options) == 0:
+                st.warning(f"警告：跳过一道不完整的题目 (ID: {i})。请检查您的 question_bank.json 文件。")
                 continue
-            if not isinstance(options, list):
-                options = [str(options)]
+                
+            explanation = item.get('explanation') or item.get('解析') or ''
+            
             normalized_questions.append({
                 'id': i, 'question': str(q_text), 'options': [str(opt) for opt in options],
                 'answer': str(answer).strip().upper(), 'explanation': str(explanation)
@@ -107,7 +62,7 @@ def load_questions():
         st.error(f"加载题库时发生未知错误: {str(e)}")
         st.stop()
 
-# --- 重置/生成批次函数 (重置所有状态) ---
+# --- 重置/生成批次函数 (不变) ---
 def reset_quiz_state():
     keys_to_delete = [
         'all_questions', 'correct_ids', 'incorrect_ids', 'current_batch',
@@ -151,7 +106,7 @@ def generate_new_batch():
     st.session_state.submitted_answers = {}
     st.session_state.quiz_finished = not new_batch
 
-# --- 主应用逻辑 ---
+# --- 主应用逻辑 (【核心修复2】增加答题时的健壮性检查) ---
 def main():
     st.title("✈️ 飞机人电子系统刷题系统")
     st.markdown("### 专为飞机人提供")
@@ -160,16 +115,14 @@ def main():
     if "all_questions" not in st.session_state:
         reset_quiz_state()
 
-    # --- 侧边栏 ---
+    # --- 侧边栏 (不变) ---
     with st.sidebar:
         st.header("⚙️ 设置")
-
         if st.button("🔄 重新开始", type="primary"):
             total = len(st.session_state.all_questions)
             correct = len(st.session_state.correct_ids)
             incorrect = len(st.session_state.incorrect_ids)
             wrong_review = len(st.session_state.wrong_question_list)
-
             with st.expander("⚠️ 确认重新开始？", expanded=True):
                 st.warning("重新开始后，当前的答题进度、错题记录将全部清空！")
                 st.markdown("### 当前进度预览：")
@@ -177,7 +130,6 @@ def main():
                 st.write(f"- 已掌握：{correct}")
                 st.write(f"- 错题数：{incorrect}")
                 st.write(f"- 需重点复习：{wrong_review}")
-
                 col1, col2 = st.columns(2)
                 with col1:
                     if st.button("🚨 确认重置 (危险)", type="primary"):
@@ -186,7 +138,6 @@ def main():
                 with col2:
                     if st.button("❌ 取消"):
                         st.rerun()
-
         st.divider()
         st.header("📊 总进度")
         total_q = len(st.session_state.all_questions)
@@ -195,7 +146,6 @@ def main():
         if total_q > 0:
             st.progress(correct_q / total_q, text=f"已掌握: {correct_q} / {total_q}")
         st.write(f"未掌握 (本轮): {incorrect_q}")
-
         st.divider()
         st.header("📋 错题库 (错2次以上)")
         num_wrong_to_review = len(st.session_state.wrong_question_list)
@@ -242,6 +192,14 @@ def main():
     current_question = current_batch[current_idx]
     question_id = current_question['id']
 
+    # 【修复】增加健壮性检查，如果题目选项为空，则跳过
+    if not current_question['options'] or len(current_question['options']) == 0:
+        st.error(f"**错误：当前题目 (ID: {question_id}) 没有选项，已自动跳过。**")
+        st.session_state.current_question_idx += 1
+        if st.button("➡️ 继续下一题", type="primary"):
+            st.rerun()
+        return
+
     st.subheader(f"本轮: 第 {current_idx + 1}/{len(current_batch)} 题")
     st.write(f"**{current_question['question']}**")
 
@@ -258,7 +216,6 @@ def main():
 
     if not is_submitted:
         if st.button("✅ 提交答案", type="primary"):
-            # 防呆设计：判断用户是否真的选择了答案
             if user_answer == current_question["options"][0] and question_id not in st.session_state.get('temp_choices', set()):
                 st.warning("请至少选择一个不同于默认的答案！")
                 if 'temp_choices' not in st.session_state:
@@ -266,10 +223,8 @@ def main():
                 st.session_state['temp_choices'].add(question_id)
             else:
                 st.session_state.submitted_answers[question_id] = user_answer
-                # 修复点1：提取答案字母时先判空
                 user_answer_letter = user_answer.split(".")[0].strip().upper() if user_answer else ""
                 is_correct = user_answer_letter == current_question["answer"]
-
                 if is_correct:
                     st.session_state.correct_ids.add(question_id)
                     st.session_state.incorrect_ids.discard(question_id)
@@ -282,35 +237,28 @@ def main():
                     st.session_state.correct_ids.discard(question_id)
                     st.session_state.error_counts[question_id] = st.session_state.error_counts.get(question_id, 0) + 1
                     st.session_state.last_wrong_answers[question_id] = user_answer
-                
-                # 更新错题库
                 st.session_state.wrong_question_list = [q for q in st.session_state.all_questions if q['id'] in st.session_state.error_counts and st.session_state.error_counts[q['id']] >= 2]
-
                 st.rerun()
     else:
         st.divider()
-        # 修复点2：关键修复 - 对user_answer_text判空，避免None.split()
+        # 【最终防线】再次检查，防止任何意外情况
         if not user_answer_text:
-            st.error("未获取到提交的答案，请重新答题！")
+            st.error("数据异常：未记录到您的答案。请刷新页面或重新开始。")
             del st.session_state.submitted_answers[question_id]
             st.rerun()
         
         user_answer_letter = user_answer_text.split(".")[0].strip().upper()
         correct_answer_letter = current_question["answer"]
         is_correct = user_answer_letter == correct_answer_letter
-
         if is_correct:
             st.success("🎉 回答正确！")
         else:
             st.error("❌ 回答错误。")
             st.markdown(f"**你选择了：** <span style='color:red'>{user_answer_text}</span>", unsafe_allow_html=True)
-        
         correct_answer_text = next((opt for opt in current_question["options"] if opt.strip().startswith(correct_answer_letter)), "【未找到】")
         st.markdown(f"**正确答案是：** <span style='color:green'>{correct_answer_text}</span>", unsafe_allow_html=True)
-        
         if current_question.get("explanation"):
             st.caption(f"**解析:** {current_question['explanation']}")
-
         if st.button("➡️ 下一题", type="primary"):
             st.session_state.current_question_idx += 1
             st.rerun()
