@@ -3,7 +3,7 @@ import json
 import random
 
 # --- 页面配置 ---
-st.set_page_config(page_title="飞机刷题软件1.2", page_icon="✈️", layout="centered")
+st.set_page_config(page_title="飞机刷题软件1.5", page_icon="✈️", layout="centered")
 
 # --- 自定义CSS (不变) ---
 st.markdown("""
@@ -90,8 +90,8 @@ def generate_new_batch():
 
 # --- 主应用逻辑 (【核心修复】) ---
 def main():
-    st.title("✈️ 飞机刷题软件 1.2")
-    st.markdown("专为手机优化，界面更紧凑，体验更流畅！")
+    st.title("✈️ 飞机刷题软件 1.5")
+    st.markdown("专为飞机人刷题")
     st.divider()
 
     if "all_questions" not in st.session_state:
@@ -236,3 +236,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
