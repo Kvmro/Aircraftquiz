@@ -22,7 +22,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 加载题库 (【核心修复1】过滤无效题目) ---
+# --- 加载题库 (不变) ---
 @st.cache_data
 def load_questions():
     try:
@@ -37,7 +37,6 @@ def load_questions():
             options = item.get('options') or item.get('选项')
             answer = item.get('answer') or item.get('正确答案')
             
-            # 【修复】检查题目是否完整，特别是选项不能为空
             if not q_text or not options or not answer or not isinstance(options, list) or len(options) == 0:
                 st.warning(f"警告：跳过一道不完整的题目 (ID: {i})。请检查您的 question_bank.json 文件。")
                 continue
@@ -67,8 +66,7 @@ def reset_quiz_state():
     keys_to_delete = [
         'all_questions', 'correct_ids', 'incorrect_ids', 'current_batch',
         'current_question_idx', 'quiz_started', 'quiz_finished',
-        'submitted_answers', 'error_counts', 'last_wrong_answers', 'wrong_question_list',
-        'temp_choices'
+        'submitted_answers', 'error_counts', 'last_wrong_answers', 'wrong_question_list'
     ]
     for key in keys_to_delete:
         if key in st.session_state:
@@ -106,7 +104,7 @@ def generate_new_batch():
     st.session_state.submitted_answers = {}
     st.session_state.quiz_finished = not new_batch
 
-# --- 主应用逻辑 (【核心修复2】增加答题时的健壮性检查) ---
+# --- 主应用逻辑 (【最终修复】重构提交按钮逻辑) ---
 def main():
     st.title("✈️ 飞机人电子系统刷题系统")
     st.markdown("### 专为飞机人提供")
@@ -192,7 +190,6 @@ def main():
     current_question = current_batch[current_idx]
     question_id = current_question['id']
 
-    # 【修复】增加健壮性检查，如果题目选项为空，则跳过
     if not current_question['options'] or len(current_question['options']) == 0:
         st.error(f"**错误：当前题目 (ID: {question_id}) 没有选项，已自动跳过。**")
         st.session_state.current_question_idx += 1
@@ -216,15 +213,15 @@ def main():
 
     if not is_submitted:
         if st.button("✅ 提交答案", type="primary"):
-            if user_answer == current_question["options"][0] and question_id not in st.session_state.get('temp_choices', set()):
-                st.warning("请至少选择一个不同于默认的答案！")
-                if 'temp_choices' not in st.session_state:
-                    st.session_state['temp_choices'] = set()
-                st.session_state['temp_choices'].add(question_id)
+            # 【最终修复】防呆逻辑：检查用户是否真的做出了选择
+            if user_answer == current_question["options"][0]:
+                st.warning("⚠️ 请至少选择一个选项后再提交！")
             else:
+                # 只有在用户做出有效选择后，才执行提交逻辑
                 st.session_state.submitted_answers[question_id] = user_answer
-                user_answer_letter = user_answer.split(".")[0].strip().upper() if user_answer else ""
+                user_answer_letter = user_answer.split(".")[0].strip().upper()
                 is_correct = user_answer_letter == current_question["answer"]
+
                 if is_correct:
                     st.session_state.correct_ids.add(question_id)
                     st.session_state.incorrect_ids.discard(question_id)
@@ -237,28 +234,32 @@ def main():
                     st.session_state.correct_ids.discard(question_id)
                     st.session_state.error_counts[question_id] = st.session_state.error_counts.get(question_id, 0) + 1
                     st.session_state.last_wrong_answers[question_id] = user_answer
+                
                 st.session_state.wrong_question_list = [q for q in st.session_state.all_questions if q['id'] in st.session_state.error_counts and st.session_state.error_counts[q['id']] >= 2]
                 st.rerun()
     else:
         st.divider()
-        # 【最终防线】再次检查，防止任何意外情况
+        # 这是最后一道防线，理论上现在不会再触发了
         if not user_answer_text:
-            st.error("数据异常：未记录到您的答案。请刷新页面或重新开始。")
-            del st.session_state.submitted_answers[question_id]
-            st.rerun()
+            st.error("数据异常：未记录到您的答案。请点击侧边栏的“重新开始”。")
+            return
         
         user_answer_letter = user_answer_text.split(".")[0].strip().upper()
         correct_answer_letter = current_question["answer"]
         is_correct = user_answer_letter == correct_answer_letter
+
         if is_correct:
             st.success("🎉 回答正确！")
         else:
             st.error("❌ 回答错误。")
             st.markdown(f"**你选择了：** <span style='color:red'>{user_answer_text}</span>", unsafe_allow_html=True)
+        
         correct_answer_text = next((opt for opt in current_question["options"] if opt.strip().startswith(correct_answer_letter)), "【未找到】")
         st.markdown(f"**正确答案是：** <span style='color:green'>{correct_answer_text}</span>", unsafe_allow_html=True)
+        
         if current_question.get("explanation"):
             st.caption(f"**解析:** {current_question['explanation']}")
+
         if st.button("➡️ 下一题", type="primary"):
             st.session_state.current_question_idx += 1
             st.rerun()
