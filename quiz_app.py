@@ -3,27 +3,61 @@ import json
 import random
 
 # --- 页面配置 ---
-st.set_page_config(page_title="智能刷题软件 (手机版)", page_icon="📱", layout="centered")
+st.set_page_config(page_title="智能刷题软件 (最终版)", page_icon="✅", layout="centered")
 
-# --- 自定义CSS，优化手机显示 ---
+# --- 【核心优化】自定义CSS，将Radio按钮美化成大按钮 ---
 st.markdown("""
 <style>
-    /* 优化按钮在手机上的显示 */
-    div.stButton > button {
-        width: 100%;
-        white-space: normal;
-        word-wrap: break-word;
-        padding-top: 0.75rem;
-        padding-bottom: 0.75rem;
+    /* 针对手机端优化Radio组件，使其变为宽大的按钮 */
+    div[data-baseweb="radio"] {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem; /* 选项之间的间距 */
+    }
+    div[data-baseweb="radio"] > div {
+        display: flex;
+        align-items: center;
+        width: 100% !important;
+        padding: 0.75rem 1rem;
+        border: 1px solid #d1d5db; /* 灰色边框 */
+        border-radius: 0.5rem;
+        background-color: #f9fafb; /* 浅灰色背景 */
+        transition: all 0.2s ease;
+        cursor: pointer;
+    }
+    /* 选中时的样式 */
+    div[data-baseweb="radio"] > div[aria-checked="true"] {
+        border-color: #2563eb; /* 蓝色边框 */
+        background-color: #eff6ff; /* 浅蓝色背景 */
+        font-weight: bold;
+    }
+    /* 鼠标悬停或触摸时的效果 */
+    div[data-baseweb="radio"] > div:hover {
+        border-color: #93c5fd; /* 更深的蓝色边框 */
+        background-color: #dbeafe; /* 更深的浅蓝色背景 */
+    }
+    /* 隐藏原始的圆形单选框 */
+    div[data-baseweb="radio"] > div > div:first-child {
+        display: none;
+    }
+    /* 让选项文字靠左对齐 */
+    div[data-baseweb="radio"] > div > div:last-child {
+        flex-grow: 1;
+        text-align: left;
         font-size: 1rem;
     }
-    /* 优化结果提示文字 */
+    /* 优化其他元素的手机显示 */
+    .stButton > button {
+        width: 100%;
+        font-size: 1rem;
+        padding-top: 0.75rem;
+        padding-bottom: 0.75rem;
+    }
     .stSuccess, .stError, .stWarning {
         padding: 1rem;
         border-radius: 0.5rem;
         font-size: 1.1rem;
     }
-    /* 优化解析文字 */
     .stCaption {
         font-size: 0.9rem;
         line-height: 1.5;
@@ -90,47 +124,45 @@ def generate_new_batch():
 
 # --- 主应用逻辑 (已更新) ---
 def main():
-    st.title("📱 智能刷题软件 (手机版)")
-    st.markdown("专为手机优化，点击按钮答题，体验更流畅！")
+    st.title("✅ 智能刷题软件 (最终版)")
+    st.markdown("专为手机优化，点击大按钮答题，体验更流畅！")
     st.divider()
 
     if "all_questions" not in st.session_state:
         reset_quiz_state()
 
-    # --- 侧边栏 (已更新为抽屉式) ---
+    # --- 侧边栏 (已更新，移除多余开关) ---
     with st.sidebar:
-        # 使用 toggle 创建一个可折叠的抽屉菜单
-        if st.sidebar.toggle("☰ 菜单", False):
-            st.header("⚙️ 设置")
-            if st.button("🔄 重新开始", type="primary"):
-                reset_quiz_state()
-                st.rerun()
-            
-            st.divider()
-            st.header("📊 总进度")
-            total, correct, incorrect = len(st.session_state.all_questions), len(st.session_state.correct_ids), len(st.session_state.incorrect_ids)
-            if total > 0: st.progress(correct / total, text=f"已掌握: {correct} / {total}")
-            st.write(f"未掌握 (本轮): {incorrect}")
-            
-            st.divider()
-            st.header("📋 错题库 (错2次以上)")
-            num_wrong_to_review = len(st.session_state.wrong_question_list)
-            st.metric("需重点复习", num_wrong_to_review)
-            with st.expander("点击展开/收起错题库", expanded=False):
-                if num_wrong_to_review == 0:
-                    st.info("暂无需要重点复习的错题。")
-                else:
-                    for i, q in enumerate(st.session_state.wrong_question_list):
-                        error_count = st.session_state.error_counts[q['id']]
-                        with st.expander(f"第 {i+1} 题: {q['question'][:20]}... (错 {error_count} 次)"):
-                            st.write(f"**题干:** {q['question']}")
-                            st.write("**选项:**")
-                            for opt in q['options']: st.write(f"- {opt}")
-                            last_wrong_answer = st.session_state.last_wrong_answers.get(q['id'])
-                            if last_wrong_answer: st.markdown(f"**你上次答错的是：** <span style='color:red'>{last_wrong_answer}</span>", unsafe_allow_html=True)
-                            correct_answer_text = next((opt for opt in q["options"] if opt.strip().startswith(q["answer"])), "【未找到】")
-                            st.markdown(f"**正确答案是：** <span style='color:green'>{correct_answer_text}</span>", unsafe_allow_html=True)
-                            if q.get("explanation"): st.caption(f"**解析:** {q['explanation']}")
+        st.header("⚙️ 设置")
+        if st.button("🔄 重新开始", type="primary"):
+            reset_quiz_state()
+            st.rerun()
+        
+        st.divider()
+        st.header("📊 总进度")
+        total, correct, incorrect = len(st.session_state.all_questions), len(st.session_state.correct_ids), len(st.session_state.incorrect_ids)
+        if total > 0: st.progress(correct / total, text=f"已掌握: {correct} / {total}")
+        st.write(f"未掌握 (本轮): {incorrect}")
+        
+        st.divider()
+        st.header("📋 错题库 (错2次以上)")
+        num_wrong_to_review = len(st.session_state.wrong_question_list)
+        st.metric("需重点复习", num_wrong_to_review)
+        with st.expander("点击展开/收起错题库", expanded=False):
+            if num_wrong_to_review == 0:
+                st.info("暂无需要重点复习的错题。")
+            else:
+                for i, q in enumerate(st.session_state.wrong_question_list):
+                    error_count = st.session_state.error_counts[q['id']]
+                    with st.expander(f"第 {i+1} 题: {q['question'][:20]}... (错 {error_count} 次)"):
+                        st.write(f"**题干:** {q['question']}")
+                        st.write("**选项:**")
+                        for opt in q['options']: st.write(f"- {opt}")
+                        last_wrong_answer = st.session_state.last_wrong_answers.get(q['id'])
+                        if last_wrong_answer: st.markdown(f"**你上次答错的是：** <span style='color:red'>{last_wrong_answer}</span>", unsafe_allow_html=True)
+                        correct_answer_text = next((opt for opt in q["options"] if opt.strip().startswith(q["answer"])), "【未找到】")
+                        st.markdown(f"**正确答案是：** <span style='color:green'>{correct_answer_text}</span>", unsafe_allow_html=True)
+                        if q.get("explanation"): st.caption(f"**解析:** {q['explanation']}")
 
     # --- 主内容区 ---
     if not st.session_state.quiz_started:
@@ -161,19 +193,23 @@ def main():
     is_submitted = question_id in st.session_state.submitted_answers
     user_answer_text = st.session_state.submitted_answers.get(question_id)
     
-    # 【核心改动】使用按钮组替代单选框
+    # 【核心改动】使用美化后的 st.radio
+    user_answer = st.radio(
+        "请选择你的答案：",
+        current_question["options"],
+        key=f"q_{question_id}",
+        index=current_question["options"].index(user_answer_text) if user_answer_text else None,
+        disabled=is_submitted # 提交后禁用选择
+    )
+
+    # 如果未提交，显示提交按钮
     if not is_submitted:
-        selected_option = None
-        for option in current_question['options']:
-            if st.button(option, key=f"opt_{question_id}_{option}"):
-                selected_option = option
-        
         if st.button("✅ 提交答案", type="primary"):
-            if not selected_option:
+            if not user_answer: # st.radio 在未选择时返回第一个选项，所以这里的判断可能需要调整
                 st.warning("请先选择一个答案！")
             else:
-                st.session_state.submitted_answers[question_id] = selected_option
-                user_answer_letter = selected_option.split(".")[0].strip().upper()
+                st.session_state.submitted_answers[question_id] = user_answer
+                user_answer_letter = user_answer.split(".")[0].strip().upper()
                 is_correct = user_answer_letter == current_question["answer"]
 
                 if is_correct:
@@ -187,19 +223,12 @@ def main():
                     st.session_state.incorrect_ids.add(question_id)
                     st.session_state.correct_ids.discard(question_id)
                     st.session_state.error_counts[question_id] = st.session_state.error_counts.get(question_id, 0) + 1
-                    st.session_state.last_wrong_answers[question_id] = selected_option
+                    st.session_state.last_wrong_answers[question_id] = user_answer
                     st.session_state.wrong_question_list = [q for q in st.session_state.all_questions if q['id'] in st.session_state.error_counts and st.session_state.error_counts[q['id']] >= 2]
 
                 st.rerun()
     else:
-        # 提交后，禁用按钮并高亮显示
-        for option in current_question['options']:
-            disabled = True
-            type_ = "secondary"
-            if option == user_answer_text:
-                type_ = "primary"
-            st.button(option, key=f"opt_{question_id}_{option}", disabled=disabled, type=type_)
-        
+        # 提交后，显示结果和高亮
         st.divider()
         user_answer_letter = user_answer_text.split(".")[0].strip().upper()
         correct_answer_letter = current_question["answer"]
