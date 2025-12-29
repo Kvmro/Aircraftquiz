@@ -52,7 +52,6 @@ def get_google_sheets_client():
 def load_progress(user_id):
     """从 Google Sheets 加载指定用户的进度"""
     client = get_google_sheets_client()
-    # 替换规则：把 "你的表格ID" 换成你刚复制的ID，保留引号
     sheet = client.open_by_key("13d6icf3wTSEidLWBbgEKZJcae_kYzTT3zO8WcMtoUts").sheet1
     try:
         cell = sheet.find(user_id)
@@ -65,13 +64,16 @@ def load_progress(user_id):
         }
         st.success(f"✅ 欢迎回来, {user_id}！已加载你的学习进度。")
         return progress_data, cell.row
-    except gspread.exceptions.CellNotFound:
-        st.info(f"👋 欢迎新用户 {user_id}！将为你创建新的学习记录。")
-        default_data = {"correct_ids": set(), "incorrect_ids": set(), "error_counts": {}, "last_wrong_answers": {}}
-        return default_data, None
+    # 修复：先捕获通用异常，再判断是否是单元格未找到
     except Exception as e:
-        st.error(f"加载进度时发生错误: {e}")
-        return None, None
+        # 识别单元格未找到的情况（兼容所有gspread版本）
+        if "CellNotFound" in str(e) or "Unable to find cell" in str(e):
+            st.info(f"👋 欢迎新用户 {user_id}！将为你创建新的学习记录。")
+            default_data = {"correct_ids": set(), "incorrect_ids": set(), "error_counts": {}, "last_wrong_answers": {}}
+            return default_data, None
+        else:
+            st.error(f"加载进度时发生错误: {e}")
+            return None, None
         
 def save_progress(user_id, progress_data, row_to_update=None):
     """将用户进度保存到 Google Sheets"""
@@ -290,5 +292,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
