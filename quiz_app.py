@@ -52,8 +52,8 @@ def get_google_sheets_client():
 def load_progress(user_id):
     """从 Google Sheets 加载指定用户的进度"""
     client = get_google_sheets_client()
-   # 替换规则：把 "你的表格ID" 换成你刚复制的ID，保留引号
-sheet = client.open_by_key("13d6icf3wTSEidLWBbgEKZJcae_kYzTT3zO8WcMtoUts").sheet1
+    # 替换规则：把 "你的表格ID" 换成你刚复制的ID，保留引号
+    sheet = client.open_by_key("13d6icf3wTSEidLWBbgEKZJcae_kYzTT3zO8WcMtoUts").sheet1
     try:
         cell = sheet.find(user_id)
         row = sheet.row_values(cell.row)
@@ -72,7 +72,7 @@ sheet = client.open_by_key("13d6icf3wTSEidLWBbgEKZJcae_kYzTT3zO8WcMtoUts").sheet
     except Exception as e:
         st.error(f"加载进度时发生错误: {e}")
         return None, None
-
+        
 def save_progress(user_id, progress_data, row_to_update=None):
     """将用户进度保存到 Google Sheets"""
     client = get_google_sheets_client()
@@ -290,4 +290,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
