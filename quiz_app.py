@@ -52,7 +52,8 @@ def get_google_sheets_client():
 def load_progress(user_id):
     """从 Google Sheets 加载指定用户的进度"""
     client = get_google_sheets_client()
-    sheet = client.open(SPREADSHEET_TITLE).sheet1
+   # 替换规则：把 "你的表格ID" 换成你刚复制的ID，保留引号
+sheet = client.open_by_key("13d6icf3wTSEidLWBbgEKZJcae_kYzTT3zO8WcMtoUts").sheet1
     try:
         cell = sheet.find(user_id)
         row = sheet.row_values(cell.row)
@@ -289,3 +290,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
