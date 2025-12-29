@@ -310,8 +310,7 @@ def main():
                         generate_error_batch()
                     st.rerun()
             with col_btn2:
-                if st.button("📚 去错题本", type="secondary"):
-                    tab2.select()  # 切换到错题本标签页
+                st.button("📚 去错题本", type="secondary", help="点击上方「错题本」标签页查看")
             
             # 进度统计
             st.markdown("---")
@@ -364,8 +363,7 @@ def main():
                         generate_error_batch()
                     st.rerun()
             with col_fin2:
-                if st.button("📚 去错题本", type="secondary"):
-                    tab2.select()
+                st.button("📚 去错题本", type="secondary", help="点击上方「错题本」标签页查看")
             return
 
         # 加载当前批次和题目
@@ -484,8 +482,7 @@ def main():
         with col_btn1:
             if st.button("🚀 专项练习错题", type="primary", disabled=len(error_questions)==0):
                 generate_error_batch()
-                tab1.select()  # 切换到答题标签页
-                st.rerun()
+                st.success("✅ 错题练习批次已生成！请切换到「答题练习」标签页开始练习～")
         with col_btn2:
             if st.button("🧹 清空已订正错题", type="secondary", disabled=mastered_error==0):
                 # 只保留未订正的错题
@@ -510,8 +507,7 @@ def main():
                 st.success("✅ 已清空已订正的错题！")
                 st.rerun()
         with col_btn3:
-            if st.button("📝 返回答题练习", type="secondary"):
-                tab1.select()
+            st.button("📝 返回答题练习", type="secondary", help="点击上方「答题练习」标签页继续")
         
         st.markdown("---")
         
