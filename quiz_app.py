@@ -1,11 +1,14 @@
 import streamlit as st
 import json
 import random
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+from pathlib import Path
 
 # --- 页面配置 ---
-st.set_page_config(page_title="飞机人电子系统刷题系统", page_icon="✈️", layout="centered")
+st.set_page_config(page_title="飞机人电子系统刷题系统 (云端版)", page_icon="✈️", layout="centered")
 
-# --- 自定义CSS (不变) ---
+# --- 自定义CSS ---
 st.markdown("""
 <style>
     div[data-baseweb="radio"] { display: flex; flex-direction: column; gap: 0.5rem; }
@@ -22,6 +25,73 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# --- 【核心】Google Sheets 云端存储配置 ---
+# 1. 将你的服务账号密钥JSON文件放在项目根目录下
+CREDENTIALS_FILE = 'google_credentials.json' 
+# 2. 替换为你的 Google Sheets 表格标题
+SPREADSHEET_TITLE = '飞机人刷题系统-用户进度' 
+
+def get_google_sheets_client():
+    """获取并返回一个已授权的 Google Sheets 客户端"""
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    try:
+        creds = ServiceAccountCredentials.from_json_keyfile_name(CREDENTIALS_FILE, scope)
+        client = gspread.authorize(creds)
+        return client
+    except FileNotFoundError:
+        st.error(f"错误：未找到服务账号密钥文件 '{CREDENTIALS_FILE}'。请确保它与你的代码在同一目录下。")
+        st.stop()
+    except Exception as e:
+        st.error(f"连接 Google Sheets 失败: {e}")
+        st.stop()
+
+def load_progress(user_id):
+    """从 Google Sheets 加载指定用户的进度"""
+    client = get_google_sheets_client()
+    sheet = client.open(SPREADSHEET_TITLE).sheet1
+
+    try:
+        cell = sheet.find(user_id)
+        row = sheet.row_values(cell.row)
+        progress_data = {
+            "correct_ids": set(json.loads(row[1])) if row[1] else set(),
+            "incorrect_ids": set(json.loads(row[2])) if row[2] else set(),
+            "error_counts": json.loads(row[3]) if row[3] else {},
+            "last_wrong_answers": json.loads(row[4]) if row[4] else {}
+        }
+        st.success(f"✅ 欢迎回来, {user_id}！已加载你的学习进度。")
+        return progress_data, cell.row
+    except gspread.exceptions.CellNotFound:
+        st.info(f"👋 欢迎新用户 {user_id}！将为你创建新的学习记录。")
+        default_data = {
+            "correct_ids": set(), "incorrect_ids": set(),
+            "error_counts": {}, "last_wrong_answers": {}
+        }
+        return default_data, None
+    except Exception as e:
+        st.error(f"加载进度时发生错误: {e}")
+        return None, None
+
+def save_progress(user_id, progress_data, row_to_update=None):
+    """将用户进度保存到 Google Sheets"""
+    client = get_google_sheets_client()
+    sheet = client.open(SPREADSHEET_TITLE).sheet1
+    row_data = [
+        user_id,
+        json.dumps(list(progress_data["correct_ids"])),
+        json.dumps(list(progress_data["incorrect_ids"])),
+        json.dumps(progress_data["error_counts"]),
+        json.dumps(progress_data["last_wrong_answers"])
+    ]
+    try:
+        if row_to_update:
+            sheet.update(f'A{row_to_update}:E{row_to_update}', [row_data])
+        else:
+            sheet.append_row(row_data)
+        # st.success("✅ 学习进度已成功保存到云端！") # 保存操作在后台进行，避免刷屏
+    except Exception as e:
+        st.error(f"保存进度时发生错误: {e}")
+
 # --- 加载题库 (不变) ---
 @st.cache_data
 def load_questions():
@@ -36,13 +106,9 @@ def load_questions():
             q_text = item.get('question') or item.get('题干')
             options = item.get('options') or item.get('选项')
             answer = item.get('answer') or item.get('正确答案')
-            
             if not q_text or not options or not answer or not isinstance(options, list) or len(options) == 0:
-                st.warning(f"警告：跳过一道不完整的题目 (ID: {i})。")
                 continue
-                
             explanation = item.get('explanation') or item.get('解析') or ''
-            
             normalized_questions.append({
                 'id': i, 'question': str(q_text), 'options': [str(opt) for opt in options],
                 'answer': str(answer).strip().upper(), 'explanation': str(explanation)
@@ -54,69 +120,46 @@ def load_questions():
     except FileNotFoundError:
         st.error("错误：未找到 question_bank.json 文件。")
         st.stop()
-    except json.JSONDecodeError:
-        st.error("错误：question_bank.json 文件格式不正确。")
-        st.stop()
     except Exception as e:
         st.error(f"加载题库时发生未知错误: {str(e)}")
         st.stop()
 
-# --- 【新增】开始新一轮答题 (不清空历史记录) ---
+# --- 功能函数 ---
 def start_new_attempt():
-    keys_to_reset_for_new_attempt = [
-        'current_batch', 'current_question_idx', 'submitted_answers', 'quiz_finished'
-    ]
-    for key in keys_to_reset_for_new_attempt:
+    keys_to_reset = ['current_batch', 'current_question_idx', 'submitted_answers', 'quiz_finished']
+    for key in keys_to_reset:
         if key in st.session_state:
             del st.session_state[key]
-    
     st.session_state.quiz_started = True
     generate_new_batch()
 
-# --- 【新增】重置所有学习进度 (清空一切) ---
-def reset_all_progress():
+def reset_user_progress():
+    """彻底清空当前用户在云端的所有进度"""
+    empty_data = {
+        "correct_ids": set(), "incorrect_ids": set(),
+        "error_counts": {}, "last_wrong_answers": {}
+    }
+    save_progress(st.session_state.user_id, empty_data, st.session_state.user_row_id)
+    st.success("🗑️ 你的所有学习进度已成功重置！")
+    # 重置 session_state 以反映空数据
     for key in list(st.session_state.keys()):
         del st.session_state[key]
-    initialize_app()
-
-# --- 【重构】初始化应用状态 ---
-def initialize_app():
-    all_questions = load_questions()
-    random.shuffle(all_questions)
-    
-    st.session_state.all_questions = all_questions
-    st.session_state.correct_ids = set()
-    st.session_state.incorrect_ids = set()
-    st.session_state.error_counts = {}
-    st.session_state.last_wrong_answers = {}
-
-    st.session_state.current_batch = []
-    st.session_state.current_question_idx = 0
-    st.session_state.quiz_started = False
-    st.session_state.quiz_finished = False
-    st.session_state.submitted_answers = {}
-    # 初始化确认对话框的状态
-    st.session_state.show_reset_confirmation = False
+    st.rerun()
 
 def generate_new_batch():
     batch_size = 100
     new_batch = []
-    
     incorrect_questions = [q for q in st.session_state.all_questions if q['id'] in st.session_state.incorrect_ids]
     new_batch.extend(incorrect_questions)
-    
     correct_questions = [q for q in st.session_state.all_questions if q['id'] in st.session_state.correct_ids]
     if correct_questions:
         num_review = min(20, len(correct_questions))
         new_batch.extend(random.sample(correct_questions, num_review))
-        
     remaining_questions = [q for q in st.session_state.all_questions if q['id'] not in st.session_state.correct_ids and q['id'] not in st.session_state.incorrect_ids]
     needed = batch_size - len(new_batch)
     if needed > 0 and remaining_questions:
         new_batch.extend(random.sample(remaining_questions, min(needed, len(remaining_questions))))
-        
     random.shuffle(new_batch)
-    
     st.session_state.current_batch = new_batch
     st.session_state.current_question_idx = 0
     st.session_state.submitted_answers = {}
@@ -124,37 +167,57 @@ def generate_new_batch():
 
 # --- 主应用逻辑 ---
 def main():
-    if "all_questions" not in st.session_state:
-        initialize_app()
-
-    st.title("✈️ 飞机人电子系统刷题系统")
-    st.markdown("### 专为飞机人提供")
+    st.title("✈️ 飞机人电子系统刷题系统 (云端版)")
+    st.markdown("### 手机和电脑用户均可独立保存进度！")
     st.divider()
 
-    # --- 侧边栏 ---
+    # --- 1. 用户登录/标识 ---
+    if 'user_id' not in st.session_state:
+        with st.sidebar.form("user_form"):
+            st.header("👤 用户登录")
+            user_id = st.text_input("请输入你的昵称或ID", placeholder="例如：张三123")
+            submitted = st.form_submit_button("登录")
+            if submitted and user_id:
+                st.session_state.user_id = user_id
+                st.rerun()
+            elif submitted:
+                st.warning("请输入昵称或ID！")
+        return
+
+    # --- 2. 初始化或加载用户数据 ---
+    if 'all_questions' not in st.session_state:
+        progress_data, row_id = load_progress(st.session_state.user_id)
+        if progress_data is None: return
+
+        all_questions = load_questions()
+        random.shuffle(all_questions)
+
+        st.session_state.all_questions = all_questions
+        st.session_state.correct_ids = progress_data["correct_ids"]
+        st.session_state.incorrect_ids = progress_data["incorrect_ids"]
+        st.session_state.error_counts = progress_data["error_counts"]
+        st.session_state.last_wrong_answers = progress_data["last_wrong_answers"]
+        st.session_state.user_row_id = row_id
+
+        start_new_attempt() # 首次登录直接开始
+
+    # --- 3. 侧边栏 ---
     with st.sidebar:
-        st.header("⚙️ 设置")
+        st.header(f"你好, {st.session_state.user_id}!")
+        st.button("🔄 开始新一轮答题", type="primary", on_click=start_new_attempt)
         
-        if st.button("🔄 开始新一轮答题", type="primary", on_click=start_new_attempt):
-            st.rerun()
-
-        st.markdown("---") # 视觉分隔线
+        st.markdown("---")
         st.subheader("⚠️ 危险操作")
-
-        # 【核心改动】二次确认逻辑
-        if not st.session_state.show_reset_confirmation:
-            # 初始状态：只显示一个按钮
-            if st.button("🗑️ 重置所有学习进度", type="secondary"):
+        if not st.session_state.get('show_reset_confirmation', False):
+            if st.button("🗑️ 重置我的所有进度", type="secondary"):
                 st.session_state.show_reset_confirmation = True
-                st.rerun() # 立即刷新以显示确认框
+                st.rerun()
         else:
-            # 确认状态：显示警告和两个按钮
-            st.error("**此操作不可恢复！**\n\n您确定要清空所有的学习记录、已掌握、未掌握和错题库吗？")
+            st.error("**此操作不可恢复！**\n\n确定要清空你的所有学习记录吗？")
             col1, col2 = st.columns(2)
             with col1:
                 if st.button("🚨 确认重置", type="primary"):
-                    reset_all_progress()
-                    st.rerun()
+                    reset_user_progress()
             with col2:
                 if st.button("❌ 取消"):
                     st.session_state.show_reset_confirmation = False
@@ -171,41 +234,30 @@ def main():
 
         st.divider()
         st.header("📋 错题库")
-        num_wrong_to_review = len(st.session_state.error_counts)
-        st.metric("需重点复习", num_wrong_to_review)
+        num_wrong = len(st.session_state.error_counts)
+        st.metric("需重点复习", num_wrong)
         with st.expander("点击展开/收起错题库", expanded=False):
-            if num_wrong_to_review == 0:
+            if num_wrong == 0:
                 st.info("暂无错题。")
             else:
                 for i, (q_id, error_count) in enumerate(st.session_state.error_counts.items(), 1):
                     q = next((q for q in st.session_state.all_questions if q['id'] == q_id), None)
                     if not q: continue
-                    
                     with st.expander(f"第 {i} 题: {q['question'][:30]}... (错 {error_count} 次)"):
                         st.write(f"**题干:** {q['question']}")
                         st.write("**选项:**")
-                        for opt in q['options']:
-                            st.write(f"- {opt}")
-                        last_wrong_answer = st.session_state.last_wrong_answers.get(q_id)
-                        if last_wrong_answer:
-                            st.markdown(f"**上次答错:** <span style='color:red'>{last_wrong_answer}</span>", unsafe_allow_html=True)
+                        for opt in q['options']: st.write(f"- {opt}")
+                        last_wrong = st.session_state.last_wrong_answers.get(q_id)
+                        if last_wrong: st.markdown(f"**上次答错:** <span style='color:red'>{last_wrong}</span>", unsafe_allow_html=True)
                         correct_answer_text = next((opt for opt in q["options"] if opt.strip().startswith(q["answer"])), "【未找到】")
                         st.markdown(f"**正确答案:** <span style='color:green'>{correct_answer_text}</span>", unsafe_allow_html=True)
-                        if q.get("explanation"):
-                            st.caption(f"**解析:** {q['explanation']}")
+                        if q.get("explanation"): st.caption(f"**解析:** {q['explanation']}")
 
-    # --- 主答题区 (逻辑不变) ---
-    if not st.session_state.quiz_started:
-        st.info(f"题库已加载，共 **{len(st.session_state.all_questions)}** 道题。")
-        if st.button("🚀 开始答题", type="primary", on_click=start_new_attempt):
-            st.rerun()
-        return
-
-    if "quiz_finished" not in st.session_state or st.session_state.quiz_finished:
+    # --- 4. 主答题区 ---
+    if st.session_state.quiz_finished:
         st.balloons()
         st.success("🎉 恭喜你！本轮练习完成！")
-        if st.button("🏁 查看本轮结果", type="primary"):
-            st.rerun()
+        st.button("🏁 返回", on_click=start_new_attempt)
         return
 
     current_batch, current_idx = st.session_state.current_batch, st.session_state.current_question_idx
@@ -243,16 +295,22 @@ def main():
                 if is_correct:
                     st.session_state.correct_ids.add(question_id)
                     st.session_state.incorrect_ids.discard(question_id)
-                    if question_id in st.session_state.error_counts:
-                        del st.session_state.error_counts[question_id]
-                    if question_id in st.session_state.last_wrong_answers:
-                        del st.session_state.last_wrong_answers[question_id]
+                    st.session_state.error_counts.pop(question_id, None)
+                    st.session_state.last_wrong_answers.pop(question_id, None)
                 else:
                     st.session_state.incorrect_ids.add(question_id)
                     st.session_state.correct_ids.discard(question_id)
                     st.session_state.error_counts[question_id] = st.session_state.error_counts.get(question_id, 0) + 1
                     st.session_state.last_wrong_answers[question_id] = user_answer
                 
+                # 【关键】提交后立即保存到云端
+                progress_to_save = {
+                    "correct_ids": st.session_state.correct_ids,
+                    "incorrect_ids": st.session_state.incorrect_ids,
+                    "error_counts": st.session_state.error_counts,
+                    "last_wrong_answers": st.session_state.last_wrong_answers
+                }
+                save_progress(st.session_state.user_id, progress_to_save, st.session_state.user_row_id)
                 st.rerun()
     else:
         st.divider()
@@ -272,9 +330,7 @@ def main():
         if current_question.get("explanation"):
             st.caption(f"**解析:** {current_question['explanation']}")
 
-        if st.button("➡️ 下一题", type="primary"):
-            st.session_state.current_question_idx += 1
-            st.rerun()
+        st.button("➡️ 下一题", on_click=lambda: st.session_state.update({"current_question_idx": current_idx + 1}))
 
 if __name__ == "__main__":
     main()
