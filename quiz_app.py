@@ -55,6 +55,13 @@ def load_progress(user_id):
     sheet = client.open_by_key("13d6icf3wTSEidLWBbgEKZJcae_kYzTT3zO8WcMtoUts").sheet1
     try:
         cell = sheet.find(user_id)
+        # 核心修复：先判断 cell 是否为 None（找不到用户时返回 None）
+        if cell is None:
+            st.info(f"👋 欢迎新用户 {user_id}！将为你创建新的学习记录。")
+            default_data = {"correct_ids": set(), "incorrect_ids": set(), "error_counts": {}, "last_wrong_answers": {}}
+            return default_data, None
+        
+        # 找到用户时才读取行数据
         row = sheet.row_values(cell.row)
         progress_data = {
             "correct_ids": set(json.loads(row[1])) if row[1] else set(),
@@ -64,16 +71,11 @@ def load_progress(user_id):
         }
         st.success(f"✅ 欢迎回来, {user_id}！已加载你的学习进度。")
         return progress_data, cell.row
-    # 修复：先捕获通用异常，再判断是否是单元格未找到
+    
+    # 捕获其他可能的异常（如表格访问错误、JSON解析错误等）
     except Exception as e:
-        # 识别单元格未找到的情况（兼容所有gspread版本）
-        if "CellNotFound" in str(e) or "Unable to find cell" in str(e):
-            st.info(f"👋 欢迎新用户 {user_id}！将为你创建新的学习记录。")
-            default_data = {"correct_ids": set(), "incorrect_ids": set(), "error_counts": {}, "last_wrong_answers": {}}
-            return default_data, None
-        else:
-            st.error(f"加载进度时发生错误: {e}")
-            return None, None
+        st.error(f"加载进度时发生错误: {e}")
+        return None, None
         
 def save_progress(user_id, progress_data, row_to_update=None):
     """将用户进度保存到 Google Sheets"""
@@ -292,6 +294,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
