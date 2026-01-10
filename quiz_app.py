@@ -456,8 +456,7 @@ def main():
                 for opt in current_question["options"]:
                     is_checked = st.checkbox(
                         opt,
-                        key=f"q_{question_id}_opt_{opt[:5]}",
-                        label_visibility="collapsed"
+                        key=f"q_{question_id}_opt_{opt[:5]}"
                     )
                     if is_checked:
                         selected_options.append(opt)
@@ -468,8 +467,7 @@ def main():
                     "请选择答案：",
                     current_question["options"],
                     key=f"q_{question_id}",
-                    index=None,
-                    label_visibility="collapsed"
+                    index=None
                 )
         else:
             # 已提交：禁用组件，显示用户之前的选择
@@ -480,8 +478,7 @@ def main():
                         opt,
                         value=is_checked,
                         disabled=True,
-                        key=f"q_{question_id}_opt_{opt[:5]}",
-                        label_visibility="collapsed"
+                        key=f"q_{question_id}_opt_{opt[:5]}"
                     )
             else:
                 st.radio(
@@ -489,8 +486,7 @@ def main():
                     current_question["options"],
                     key=f"q_{question_id}",
                     index=current_question["options"].index(user_answer_data) if user_answer_data else None,
-                    disabled=True,
-                    label_visibility="collapsed"
+                    disabled=True
                 )
 
         # 核心修改4：提交答案逻辑（适配单选/多选）
