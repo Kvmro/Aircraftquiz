@@ -127,7 +127,7 @@ def save_progress(user_id, progress_data, row_to_update=None):
     except Exception as e:
         st.error(f"保存进度时发生错误: {str(e)}")
 
-# --- 题库加载函数（核心修改：支持多选题"A|B|C|D"格式）---
+# --- 题库加载函数（核心修改：支持多选题"A|B|C|D"格式和数组格式["A","B","C"]）---
 @st.cache_data(ttl=3600)
 def load_questions():
     try:
@@ -146,15 +146,19 @@ def load_questions():
             if not q_text or not options or not answer or not isinstance(options, list) or len(options) == 0:
                 continue
             
-            # 核心修改1：判断是否为多选题（答案包含"|"）
-            is_multiple = "|" in str(answer)
-            answer_str = str(answer).strip().upper()
+            # 核心修改1：判断是否为多选题（答案为数组格式或包含"|"分隔符）
+            is_multiple = isinstance(answer, list) or (isinstance(answer, str) and "|" in answer)
             
             # 核心修改2：标准化答案格式，多选题转集合，单选题转字符串
-            if is_multiple:
-                standard_answer = set(answer_str.split("|"))  # 多选题：拆分为字母集合
+            if isinstance(answer, list):
+                # 数组格式答案，如 ["B", "C", "D"]
+                standard_answer = set([str(a).strip().upper() for a in answer if str(a).strip().upper()])
+            elif "|" in str(answer):
+                # "|"分隔符格式，如 "A|B|C"
+                standard_answer = set([a.strip().upper() for a in str(answer).split("|") if a.strip().upper()])
             else:
-                standard_answer = answer_str  # 单选题：保持单个字母字符串
+                # 单选题，如 "A" 或 "B"
+                standard_answer = str(answer).strip().upper()
             
             explanation = item.get('explanation') or item.get('解析') or ''
             normalized_questions.append({
@@ -163,7 +167,7 @@ def load_questions():
                 'options': [str(opt) for opt in options],
                 'answer': standard_answer,  # 多选题存集合，单选题存字符串
                 'is_multiple': is_multiple,  # 标记是否为多选题
-                'original_answer': answer_str,  # 保留原始答案字符串（用于展示）
+                'original_answer': str(answer),  # 保留原始答案字符串（用于展示）
                 'explanation': str(explanation)
             })
         
@@ -186,15 +190,37 @@ def generate_new_batch():
     new_batch = []
     all_questions = st.session_state.all_questions
     
-    incorrect_questions = [q for q in all_questions if q['id'] in st.session_state.incorrect_ids]
+    # 获取用户选择的题目类型
+    question_type = st.session_state.get('question_type_select', '全部题目')
+    
+    # 根据题目类型过滤题目
+    filtered_questions = []
+    for q in all_questions:
+        if question_type == '全部题目':
+            filtered_questions.append(q)
+        elif question_type == '仅单选题' and not q['is_multiple']:
+            filtered_questions.append(q)
+        elif question_type == '仅多选题' and q['is_multiple']:
+            filtered_questions.append(q)
+    
+    if not filtered_questions:
+        st.warning(f"⚠️ 没有找到符合条件的题目！")
+        st.session_state.current_batch = []
+        st.session_state.current_question_idx = 0
+        st.session_state.submitted_answers = {}
+        st.session_state.quiz_finished = True
+        st.session_state.current_mode = "normal"
+        return
+    
+    incorrect_questions = [q for q in filtered_questions if q['id'] in st.session_state.incorrect_ids]
     new_batch.extend(incorrect_questions[:batch_size//2])
     
-    correct_questions = [q for q in all_questions if q['id'] in st.session_state.correct_ids]
+    correct_questions = [q for q in filtered_questions if q['id'] in st.session_state.correct_ids]
     if correct_questions:
         num_review = min(batch_size//4, len(correct_questions))
         new_batch.extend(random.sample(correct_questions, num_review))
     
-    remaining_questions = [q for q in all_questions if q['id'] not in st.session_state.correct_ids and q['id'] not in st.session_state.incorrect_ids]
+    remaining_questions = [q for q in filtered_questions if q['id'] not in st.session_state.correct_ids and q['id'] not in st.session_state.incorrect_ids]
     needed = batch_size - len(new_batch)
     if needed > 0 and remaining_questions:
         new_batch.extend(random.sample(remaining_questions, min(needed, len(remaining_questions))))
@@ -213,6 +239,9 @@ def generate_error_batch():
     all_questions = st.session_state.all_questions
     error_ids = list(st.session_state.error_counts.keys())
     
+    # 获取用户选择的题目类型
+    question_type = st.session_state.get('question_type_select', '全部题目')
+    
     # 无错题时，自动切换到常规模式并提示
     if not error_ids:
         st.info("📌 错题已全部掌握！已自动切换到常规答题练习，请在上方标签页选择「答题练习」继续。")
@@ -221,10 +250,20 @@ def generate_error_batch():
         return
     
     error_ids_int = [int(q_id) for q_id in error_ids if q_id.isdigit()]
-    error_questions = [q for q in all_questions if q['id'] in error_ids_int]
+    
+    # 根据题目类型过滤错题
+    error_questions = []
+    for q in all_questions:
+        if q['id'] in error_ids_int:
+            if question_type == '全部题目':
+                error_questions.append(q)
+            elif question_type == '仅单选题' and not q['is_multiple']:
+                error_questions.append(q)
+            elif question_type == '仅多选题' and q['is_multiple']:
+                error_questions.append(q)
     
     if not error_questions:
-        st.info("📌 无有效错题！已自动切换到常规答题练习，请在上方标签页选择「答题练习」继续。")
+        st.info("📌 无符合条件的有效错题！已自动切换到常规答题练习，请在上方标签页选择「答题练习」继续。")
         st.session_state.current_mode = "normal"
         generate_new_batch()
         return
@@ -316,6 +355,16 @@ def main():
                     st.rerun()
             with col_btn2:
                 st.button("📚 去错题本", type="secondary", help="点击上方「错题本」标签页查看")
+            
+            # 题目类型选择
+            st.markdown("---")
+            st.subheader("🎯 题目类型")
+            question_type = st.radio(
+                "选择题目类型：",
+                ["全部题目", "仅单选题", "仅多选题"],
+                key="question_type_select",
+                help="选择你想要练习的题目类型"
+            )
             
             # 学习进度显示
             st.markdown("---")
