@@ -363,7 +363,8 @@ def main():
                 "选择题目类型：",
                 ["全部题目", "仅单选题", "仅多选题"],
                 key="question_type_select",
-                help="选择你想要练习的题目类型"
+                help="选择你想要练习的题目类型",
+                on_change=lambda: generate_new_batch() if st.session_state.current_mode == "normal" else generate_error_batch()
             )
             
             # 学习进度显示
