@@ -32,6 +32,23 @@ st.markdown("""
     div[data-baseweb="radio"] > div > div:last-child { 
         flex-grow: 1; text-align: left; font-size: 0.9rem; 
     }
+    /* 多选框样式优化 */
+    div[data-baseweb="checkbox"] { display: flex; flex-direction: column; gap: 0.5rem; }
+    div[data-baseweb="checkbox"] > div { 
+        display: flex; align-items: center; width: 100% !important; 
+        padding: 0.5rem 0.75rem; border: 1px solid #d1d5db; border-radius: 0.5rem; 
+        background-color: #f9fafb; transition: all 0.2s ease; cursor: pointer; 
+    }
+    div[data-baseweb="checkbox"] > div[data-checked="true"] { 
+        border-color: #2563eb; background-color: #eff6ff; font-weight: bold; 
+    }
+    div[data-baseweb="checkbox"] > div:hover { 
+        border-color: #93c5fd; background-color: #dbeafe; 
+    }
+    div[data-baseweb="checkbox"] > div > div:first-child { display: none; }
+    div[data-baseweb="checkbox"] > div > div:last-child { 
+        flex-grow: 1; text-align: left; font-size: 0.9rem; 
+    }
     .stButton > button { 
         width: 100%; font-size: 0.9rem; padding-top: 0.5rem; padding-bottom: 0.5rem; 
     }
@@ -45,7 +62,7 @@ st.markdown("""
 
 # --- 核心配置 ---
 SPREADSHEET_ID = '13d6icf3wTSEidLWBbgEKZJcae_kYzTT3zO8WcMtoUts'  
-TOTAL_QUESTIONS = 1330  # 【修改1：固定总题数为1330道】
+TOTAL_QUESTIONS = 1330  # 固定总题数为1330道
 
 # --- Google Sheets 连接函数 ---
 def get_google_sheets_client():
@@ -110,7 +127,7 @@ def save_progress(user_id, progress_data, row_to_update=None):
     except Exception as e:
         st.error(f"保存进度时发生错误: {str(e)}")
 
-# --- 题库加载函数 ---
+# --- 题库加载函数（核心修改：支持多选题"A|B|C|D"格式）---
 @st.cache_data(ttl=3600)
 def load_questions():
     try:
@@ -129,12 +146,24 @@ def load_questions():
             if not q_text or not options or not answer or not isinstance(options, list) or len(options) == 0:
                 continue
             
+            # 核心修改1：判断是否为多选题（答案包含"|"）
+            is_multiple = "|" in str(answer)
+            answer_str = str(answer).strip().upper()
+            
+            # 核心修改2：标准化答案格式，多选题转集合，单选题转字符串
+            if is_multiple:
+                standard_answer = set(answer_str.split("|"))  # 多选题：拆分为字母集合
+            else:
+                standard_answer = answer_str  # 单选题：保持单个字母字符串
+            
             explanation = item.get('explanation') or item.get('解析') or ''
             normalized_questions.append({
                 'id': i,
                 'question': str(q_text),
                 'options': [str(opt) for opt in options],
-                'answer': str(answer).strip().upper(),
+                'answer': standard_answer,  # 多选题存集合，单选题存字符串
+                'is_multiple': is_multiple,  # 标记是否为多选题
+                'original_answer': answer_str,  # 保留原始答案字符串（用于展示）
                 'explanation': str(explanation)
             })
         
@@ -142,7 +171,7 @@ def load_questions():
             st.error("错误：未加载到有效题目，请检查题库文件！")
             st.stop()
         
-        st.success(f"✅ 题库加载完成（共 {TOTAL_QUESTIONS} 道有效题目）")  # 【修改2：显示1330道题】
+        st.success(f"✅ 题库加载完成（共 {TOTAL_QUESTIONS} 道有效题目，包含多选题 {len([q for q in normalized_questions if q['is_multiple']])} 道）")
         return normalized_questions
     except FileNotFoundError:
         st.error("错误：未找到 question_bank.json 文件，请确认文件路径！")
@@ -180,7 +209,7 @@ def generate_new_batch():
     st.session_state.current_mode = "normal"
 
 def generate_error_batch():
-    """【修改3：优化错题做完后的逻辑】"""
+    """优化错题做完后的逻辑"""
     all_questions = st.session_state.all_questions
     error_ids = list(st.session_state.error_counts.keys())
     
@@ -231,7 +260,7 @@ def paginate_list(data, page_num, page_size):
 # --- 主应用逻辑 ---
 def main():
     st.title("✈️ 飞机人电子系统刷题系统")
-    st.markdown(f"### 适配{TOTAL_QUESTIONS}道海量题库 | 错题本独立管理")  # 【修改4：标题显示1330道题】
+    st.markdown(f"### 适配{TOTAL_QUESTIONS}道海量题库 | 错题本独立管理 | 支持单选/多选")
     st.divider()
 
     # 用户登录
@@ -288,7 +317,7 @@ def main():
             with col_btn2:
                 st.button("📚 去错题本", type="secondary", help="点击上方「错题本」标签页查看")
             
-            # 【修改5：学习进度显示1330道题】
+            # 学习进度显示
             st.markdown("---")
             st.subheader("📊 学习进度")
             total_q = TOTAL_QUESTIONS
@@ -351,35 +380,91 @@ def main():
             if st.session_state.current_mode == "normal":
                 generate_new_batch()
             else:
-                generate_error_batch()  # 这里会自动处理无错题的情况
+                generate_error_batch()  # 自动处理无错题的情况
             st.rerun()
 
         current_question = current_batch[current_idx]
         question_id = current_question['id']
+        is_multiple = current_question['is_multiple']  # 获取是否为多选题
         
         st.subheader(f"本轮进度：{current_idx + 1}/{len(current_batch)} 题")
         st.write(f"### {current_question['question']}")
+        
+        # 显示题型提示
+        if is_multiple:
+            st.warning("📌 本题为多选题：请选择所有正确答案（支持多选）")
+        else:
+            st.info("📌 本题为单选题：请选择唯一正确答案")
 
         is_submitted = question_id in st.session_state.submitted_answers
-        user_answer_text = st.session_state.submitted_answers.get(question_id)
-        user_answer = st.radio(
-            "请选择答案：",
-            current_question["options"],
-            key=f"q_{question_id}",
-            index=current_question["options"].index(user_answer_text) if user_answer_text else None,
-            disabled=is_submitted
-        )
+        user_answer_data = st.session_state.submitted_answers.get(question_id)
 
+        # 核心修改3：自适应渲染单选/多选组件
+        if not is_submitted:
+            if is_multiple:
+                # 多选题：使用复选框组件，收集用户选择
+                selected_options = []
+                for opt in current_question["options"]:
+                    is_checked = st.checkbox(
+                        opt,
+                        key=f"q_{question_id}_opt_{opt[:5]}",
+                        label_visibility="collapsed"
+                    )
+                    if is_checked:
+                        selected_options.append(opt)
+                user_answer_to_submit = selected_options
+            else:
+                # 单选题：使用原有单选组件
+                user_answer_to_submit = st.radio(
+                    "请选择答案：",
+                    current_question["options"],
+                    key=f"q_{question_id}",
+                    index=None,
+                    label_visibility="collapsed"
+                )
+        else:
+            # 已提交：禁用组件，显示用户之前的选择
+            if is_multiple:
+                for opt in current_question["options"]:
+                    is_checked = opt in user_answer_data
+                    st.checkbox(
+                        opt,
+                        value=is_checked,
+                        disabled=True,
+                        key=f"q_{question_id}_opt_{opt[:5]}",
+                        label_visibility="collapsed"
+                    )
+            else:
+                st.radio(
+                    "你的答案：",
+                    current_question["options"],
+                    key=f"q_{question_id}",
+                    index=current_question["options"].index(user_answer_data) if user_answer_data else None,
+                    disabled=True,
+                    label_visibility="collapsed"
+                )
+
+        # 核心修改4：提交答案逻辑（适配单选/多选）
         if not is_submitted:
             if st.button("✅ 提交答案", type="primary"):
-                if user_answer is None:
-                    st.warning("⚠️ 请选择答案后提交！")
+                # 空答案校验
+                if (is_multiple and len(user_answer_to_submit) == 0) or (not is_multiple and user_answer_to_submit is None):
+                    st.warning("⚠️ 请选择至少一个答案后提交！")
                 else:
-                    st.session_state.submitted_answers[question_id] = user_answer
+                    st.session_state.submitted_answers[question_id] = user_answer_to_submit
                     
-                    user_answer_letter = user_answer.split(".")[0].strip().upper()
-                    is_correct = user_answer_letter == current_question["answer"]
+                    # 答案正确性校验
+                    if is_multiple:
+                        # 多选题：提取用户选择的字母集合 vs 正确答案集合
+                        user_answer_letters = set([opt.split(".")[0].strip().upper() for opt in user_answer_to_submit])
+                        correct_letters = current_question["answer"]
+                        is_correct = user_answer_letters == correct_letters
+                    else:
+                        # 单选题：原有校验逻辑
+                        user_answer_letter = user_answer_to_submit.split(".")[0].strip().upper()
+                        is_correct = user_answer_letter == current_question["answer"]
                     
+                    # 更新学习进度
                     if is_correct:
                         st.session_state.correct_ids.add(question_id)
                         st.session_state.incorrect_ids.discard(question_id)
@@ -389,8 +474,9 @@ def main():
                         st.session_state.incorrect_ids.add(question_id)
                         st.session_state.correct_ids.discard(question_id)
                         st.session_state.error_counts[str(question_id)] = st.session_state.error_counts.get(str(question_id), 0) + 1
-                        st.session_state.last_wrong_answers[str(question_id)] = user_answer
+                        st.session_state.last_wrong_answers[str(question_id)] = user_answer_to_submit
                     
+                    # 保存进度
                     progress_to_save = {
                         "correct_ids": st.session_state.correct_ids,
                         "incorrect_ids": st.session_state.incorrect_ids,
@@ -400,27 +486,48 @@ def main():
                     save_progress(st.session_state.user_id, progress_to_save, st.session_state.user_row_id)
                     st.rerun()
         else:
+            # 核心修改5：提交后展示正确/错误结果（适配单选/多选）
             st.divider()
-            user_answer_letter = user_answer_text.split(".")[0].strip().upper()
-            correct_answer_letter = current_question["answer"]
-            is_correct = user_answer_letter == correct_answer_letter
-            
-            if is_correct:
-                st.success("🎉 回答正确！")
+            if is_multiple:
+                # 多选题结果展示
+                user_answer_letters = set([opt.split(".")[0].strip().upper() for opt in user_answer_data])
+                correct_letters = current_question["answer"]
+                is_correct = user_answer_letters == correct_letters
+                
+                if is_correct:
+                    st.success("🎉 回答正确！")
+                else:
+                    st.error("❌ 回答错误！")
+                    st.markdown(f"**你的答案：** <span style='color:red'>{', '.join(user_answer_data)}</span>", unsafe_allow_html=True)
+                
+                # 拼接多选题正确答案文本
+                correct_answer_texts = [opt for opt in current_question["options"] 
+                                        if opt.split(".")[0].strip().upper() in correct_letters]
+                st.markdown(f"**正确答案：** <span style='color:green'>{', '.join(correct_answer_texts)}</span>", unsafe_allow_html=True)
             else:
-                st.error("❌ 回答错误！")
-                st.markdown(f"**你的答案：** <span style='color:red'>{user_answer_text}</span>", unsafe_allow_html=True)
+                # 单选题结果展示（原有逻辑）
+                user_answer_letter = user_answer_data.split(".")[0].strip().upper()
+                correct_answer_letter = current_question["answer"]
+                is_correct = user_answer_letter == correct_answer_letter
+                
+                if is_correct:
+                    st.success("🎉 回答正确！")
+                else:
+                    st.error("❌ 回答错误！")
+                    st.markdown(f"**你的答案：** <span style='color:red'>{user_answer_data}</span>", unsafe_allow_html=True)
+                
+                correct_answer_text = next((opt for opt in current_question["options"] if opt.strip().startswith(correct_answer_letter)), "【未找到】")
+                st.markdown(f"**正确答案：** <span style='color:green'>{correct_answer_text}</span>", unsafe_allow_html=True)
             
-            correct_answer_text = next((opt for opt in current_question["options"] if opt.strip().startswith(correct_answer_letter)), "【未找到】")
-            st.markdown(f"**正确答案：** <span style='color:green'>{correct_answer_text}</span>", unsafe_allow_html=True)
-            
+            # 显示解析
             if current_question.get("explanation"):
                 st.markdown("---")
                 st.info(f"📖 解析：{current_question['explanation']}")
             
+            # 下一题按钮
             st.button("➡️ 下一题", on_click=lambda: st.session_state.update({"current_question_idx": current_idx + 1}), type="primary")
 
-    # 错题本标签页
+    # 错题本标签页（核心修改6：适配多选题错题展示）
     with tab2:
         st.header("📚 错题本管理")
         st.markdown("---")
@@ -487,19 +594,33 @@ def main():
                 q_id_str = str(q['id'])
                 error_count = st.session_state.error_counts.get(q_id_str, 0)
                 last_wrong = st.session_state.last_wrong_answers.get(q_id_str, "")
+                is_multiple = q['is_multiple']
                 
                 with st.expander(f"📌 错题 {page_size*(page_num-1)+idx+1} | 错误 {error_count} 次 | 题干：{q['question'][:50]}..."):
                     st.write(f"### 题干：{q['question']}")
                     
                     st.write("#### 选项：")
                     for opt in q['options']:
-                        if opt == last_wrong:
-                            st.markdown(f"- ❌ {opt}", unsafe_allow_html=True)
+                        # 适配多选题错误答案展示
+                        if is_multiple:
+                            if isinstance(last_wrong, list) and opt in last_wrong:
+                                st.markdown(f"- ❌ {opt}", unsafe_allow_html=True)
+                            else:
+                                st.write(f"- {opt}")
                         else:
-                            st.write(f"- {opt}")
+                            if opt == last_wrong:
+                                st.markdown(f"- ❌ {opt}", unsafe_allow_html=True)
+                            else:
+                                st.write(f"- {opt}")
                     
-                    correct_answer_text = next((opt for opt in q["options"] if opt.strip().startswith(q["answer"])), "【未找到】")
-                    st.markdown(f"#### ✅ 正确答案：<span style='color:green'>{correct_answer_text}</span>", unsafe_allow_html=True)
+                    # 适配多选题正确答案展示
+                    if is_multiple:
+                        correct_answer_texts = [opt for opt in q["options"] 
+                                                if opt.split(".")[0].strip().upper() in q["answer"]]
+                        st.markdown(f"#### ✅ 正确答案：<span style='color:green'>{', '.join(correct_answer_texts)}</span>", unsafe_allow_html=True)
+                    else:
+                        correct_answer_text = next((opt for opt in q["options"] if opt.strip().startswith(q["answer"])), "【未找到】")
+                        st.markdown(f"#### ✅ 正确答案：<span style='color:green'>{correct_answer_text}</span>", unsafe_allow_html=True)
                     
                     if q.get("explanation"):
                         st.markdown(f"#### 📖 解析：{q['explanation']}", unsafe_allow_html=True)
