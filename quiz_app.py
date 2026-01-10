@@ -158,11 +158,30 @@ def main():
         st.subheader(f"本轮进度：{current_idx + 1}/{len(current_batch)} 题")
         st.write(f"### {current_question['question']}")
         
-        # 显示题型提示
-        if is_multiple:
-            st.warning("📌 本题为多选题：请选择所有正确答案（支持多选）")
-        else:
-            st.info("📌 本题为单选题：请选择唯一正确答案")
+        # 显示题型提示 - 优化样式，使单选题和多选题更明显分区
+        col_type1, col_type2 = st.columns([1, 10])
+        with col_type1:
+            if is_multiple:
+                st.markdown(
+                    "<div style='background-color: #FF4B4B; color: white; padding: 0.5rem 1rem; border-radius: 0.5rem; font-weight: bold;'>多选题</div>",
+                    unsafe_allow_html=True
+                )
+            else:
+                st.markdown(
+                    "<div style='background-color: #10B981; color: white; padding: 0.5rem 1rem; border-radius: 0.5rem; font-weight: bold;'>单选题</div>",
+                    unsafe_allow_html=True
+                )
+        with col_type2:
+            if is_multiple:
+                st.markdown(
+                    "<div style='padding: 0.5rem; font-size: 1rem;'>📌 请选择所有正确答案（支持多选）</div>",
+                    unsafe_allow_html=True
+                )
+            else:
+                st.markdown(
+                    "<div style='padding: 0.5rem; font-size: 1rem;'>📌 请选择唯一正确答案</div>",
+                    unsafe_allow_html=True
+                )
 
         is_submitted = question_id in st.session_state.submitted_answers
         user_answer_data = st.session_state.submitted_answers.get(question_id)
