@@ -431,11 +431,6 @@ def main():
         else:
             st.info("🎉 暂无错题！继续保持优秀的答题状态～")
 
-if __name__ == "__main__":
-    main()
-
-
-
 def generate_error_batch():
     """优化错题做完后的逻辑"""
     error_ids = list(st.session_state.error_counts.keys())
