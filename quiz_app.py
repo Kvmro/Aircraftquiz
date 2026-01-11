@@ -127,8 +127,8 @@ def save_progress(user_id, progress_data, row_to_update=None):
     except Exception as e:
         st.error(f"保存进度时发生错误: {str(e)}")
 
-# --- 题库加载函数（核心修改：支持多选题"A|B|C|D"格式和数组格式["A","B","C"]）---
-@st.cache_data(ttl=3600)
+# --- 题库加载函数（优化：改进缓存策略，预计算题型分类）---
+@st.cache_data(ttl=3600, show_spinner="正在加载题库...")
 def load_questions():
     try:
         with open("question_bank.json", "r", encoding="utf-8") as f:
@@ -138,6 +138,11 @@ def load_questions():
             st.stop()
         
         normalized_questions = []
+        # 预计算不同题型的题目列表
+        all_questions = []
+        single_choice = []
+        multiple_choice = []
+        
         for i, item in enumerate(data):
             q_text = item.get('question') or item.get('题干')
             options = item.get('options') or item.get('选项')
@@ -146,10 +151,10 @@ def load_questions():
             if not q_text or not options or not answer or not isinstance(options, list) or len(options) == 0:
                 continue
             
-            # 核心修改1：判断是否为多选题（答案为数组格式或包含"|"分隔符）
+            # 判断是否为多选题（答案为数组格式或包含"|"分隔符）
             is_multiple = isinstance(answer, list) or (isinstance(answer, str) and "|" in answer)
             
-            # 核心修改2：标准化答案格式，多选题转集合，单选题转字符串
+            # 标准化答案格式，多选题转集合，单选题转字符串
             if isinstance(answer, list):
                 # 数组格式答案，如 ["B", "C", "D"]
                 standard_answer = set([str(a).strip().upper() for a in answer if str(a).strip().upper()])
@@ -161,7 +166,7 @@ def load_questions():
                 standard_answer = str(answer).strip().upper()
             
             explanation = item.get('explanation') or item.get('解析') or ''
-            normalized_questions.append({
+            question = {
                 'id': i,
                 'question': str(q_text),
                 'options': [str(opt) for opt in options],
@@ -169,16 +174,33 @@ def load_questions():
                 'is_multiple': is_multiple,  # 标记是否为多选题
                 'original_answer': str(answer),  # 保留原始答案字符串（用于展示）
                 'explanation': str(explanation)
-            })
+            }
+            
+            normalized_questions.append(question)
+            all_questions.append(question)
+            if is_multiple:
+                multiple_choice.append(question)
+            else:
+                single_choice.append(question)
         
         if not normalized_questions:
             st.error("错误：未加载到有效题目，请检查题库文件！")
             st.stop()
         
-        st.success(f"✅ 题库加载完成（共 {TOTAL_QUESTIONS} 道有效题目，包含多选题 {len([q for q in normalized_questions if q['is_multiple']])} 道）")
-        return normalized_questions
+        # 返回包含所有题型分类的结果
+        return {
+            'all': all_questions,
+            'single_choice': single_choice,
+            'multiple_choice': multiple_choice,
+            'total': len(all_questions),
+            'total_single': len(single_choice),
+            'total_multiple': len(multiple_choice)
+        }
     except FileNotFoundError:
         st.error("错误：未找到 question_bank.json 文件，请确认文件路径！")
+        st.stop()
+    except json.JSONDecodeError as e:
+        st.error(f"错误：题库文件格式错误，无法解析 JSON: {str(e)}")
         st.stop()
     except Exception as e:
         st.error(f"加载题库时发生错误: {str(e)}")
@@ -188,20 +210,23 @@ def load_questions():
 def generate_new_batch():
     batch_size = 50
     new_batch = []
-    all_questions = st.session_state.all_questions
     
     # 获取用户选择的题目类型
     question_type = st.session_state.get('question_type_select', '全部题目')
     
-    # 根据题目类型过滤题目
-    filtered_questions = []
-    for q in all_questions:
-        if question_type == '全部题目':
-            filtered_questions.append(q)
-        elif question_type == '仅单选题' and not q['is_multiple']:
-            filtered_questions.append(q)
-        elif question_type == '仅多选题' and q['is_multiple']:
-            filtered_questions.append(q)
+    # 优化：使用预计算的题型分类，避免重复遍历所有题目
+    questions_data = st.session_state.questions_data
+    all_questions = st.session_state.all_questions
+    
+    # 根据题目类型直接获取对应的题目列表
+    if question_type == '全部题目':
+        filtered_questions = all_questions
+    elif question_type == '仅单选题':
+        filtered_questions = questions_data['single_choice']
+    elif question_type == '仅多选题':
+        filtered_questions = questions_data['multiple_choice']
+    else:
+        filtered_questions = all_questions
     
     if not filtered_questions:
         st.warning(f"⚠️ 没有找到符合条件的题目！")
@@ -212,15 +237,26 @@ def generate_new_batch():
         st.session_state.current_mode = "normal"
         return
     
-    incorrect_questions = [q for q in filtered_questions if q['id'] in st.session_state.incorrect_ids]
+    # 优化：使用列表推导式，比循环更高效
+    incorrect_ids = st.session_state.incorrect_ids
+    correct_ids = st.session_state.correct_ids
+    
+    # 使用set进行快速查找
+    incorrect_ids_set = set(incorrect_ids)
+    correct_ids_set = set(correct_ids)
+    
+    # 分类题目
+    incorrect_questions = [q for q in filtered_questions if q['id'] in incorrect_ids_set]
+    correct_questions = [q for q in filtered_questions if q['id'] in correct_ids_set]
+    remaining_questions = [q for q in filtered_questions if q['id'] not in incorrect_ids_set and q['id'] not in correct_ids_set]
+    
+    # 生成批次
     new_batch.extend(incorrect_questions[:batch_size//2])
     
-    correct_questions = [q for q in filtered_questions if q['id'] in st.session_state.correct_ids]
     if correct_questions:
         num_review = min(batch_size//4, len(correct_questions))
         new_batch.extend(random.sample(correct_questions, num_review))
     
-    remaining_questions = [q for q in filtered_questions if q['id'] not in st.session_state.correct_ids and q['id'] not in st.session_state.incorrect_ids]
     needed = batch_size - len(new_batch)
     if needed > 0 and remaining_questions:
         new_batch.extend(random.sample(remaining_questions, min(needed, len(remaining_questions))))
@@ -236,11 +272,10 @@ def generate_new_batch():
 
 def generate_error_batch():
     """优化错题做完后的逻辑"""
+    # 优化：使用预计算的题型分类
+    questions_data = st.session_state.questions_data
     all_questions = st.session_state.all_questions
     error_ids = list(st.session_state.error_counts.keys())
-    
-    # 获取用户选择的题目类型
-    question_type = st.session_state.get('question_type_select', '全部题目')
     
     # 无错题时，自动切换到常规模式并提示
     if not error_ids:
@@ -249,18 +284,28 @@ def generate_error_batch():
         generate_new_batch()
         return
     
+    # 优化：使用set进行快速查找
     error_ids_int = [int(q_id) for q_id in error_ids if q_id.isdigit()]
+    error_ids_set = set(error_ids_int)
     
-    # 根据题目类型过滤错题
-    error_questions = []
-    for q in all_questions:
-        if q['id'] in error_ids_int:
-            if question_type == '全部题目':
-                error_questions.append(q)
-            elif question_type == '仅单选题' and not q['is_multiple']:
-                error_questions.append(q)
-            elif question_type == '仅多选题' and q['is_multiple']:
-                error_questions.append(q)
+    # 获取用户选择的题目类型
+    question_type = st.session_state.get('question_type_select', '全部题目')
+    
+    # 优化：根据题目类型直接获取对应的题目列表，然后过滤错题
+    if question_type == '全部题目':
+        # 全部题目，直接过滤错题
+        error_questions = [q for q in all_questions if q['id'] in error_ids_set]
+    elif question_type == '仅单选题':
+        # 仅单选题，先获取单选题列表，再过滤错题
+        single_choice = questions_data['single_choice']
+        error_questions = [q for q in single_choice if q['id'] in error_ids_set]
+    elif question_type == '仅多选题':
+        # 仅多选题，先获取多选题列表，再过滤错题
+        multiple_choice = questions_data['multiple_choice']
+        error_questions = [q for q in multiple_choice if q['id'] in error_ids_set]
+    else:
+        # 默认全部题目
+        error_questions = [q for q in all_questions if q['id'] in error_ids_set]
     
     if not error_questions:
         st.info("📌 无符合条件的有效错题！已自动切换到常规答题练习，请在上方标签页选择「答题练习」继续。")
@@ -322,15 +367,23 @@ def main():
         progress_data, row_id = load_progress(st.session_state.user_id)
         if progress_data is None:
             return
-        all_questions = load_questions()
         
+        # 加载题库数据（包含预计算的题型分类）
+        questions_data = load_questions()
+        all_questions = questions_data['all']
+        
+        # 保存完整题库和预计算的题型分类到会话状态
         st.session_state.all_questions = all_questions
+        st.session_state.questions_data = questions_data  # 保存预计算的题型分类
         st.session_state.correct_ids = progress_data["correct_ids"]
         st.session_state.incorrect_ids = progress_data["incorrect_ids"]
         st.session_state.error_counts = progress_data["error_counts"]
         st.session_state.last_wrong_answers = progress_data["last_wrong_answers"]
         st.session_state.user_row_id = row_id
         st.session_state.current_mode = "normal"
+        
+        # 显示加载成功信息
+        st.success(f"✅ 题库加载完成（共 {questions_data['total']} 道有效题目，包含单选题 {questions_data['total_single']} 道，多选题 {questions_data['total_multiple']} 道）")
         
         generate_new_batch()
 
@@ -544,7 +597,6 @@ def main():
                     st.success("🎉 回答正确！")
                 else:
                     st.error("❌ 回答错误！")
-                    st.markdown(f"**你的答案：** <span style='color:red'>{', '.join(user_answer_data)}</span>", unsafe_allow_html=True)
                 
                 # 拼接多选题正确答案文本
                 correct_answer_texts = [opt for opt in current_question["options"] 
@@ -560,7 +612,6 @@ def main():
                     st.success("🎉 回答正确！")
                 else:
                     st.error("❌ 回答错误！")
-                    st.markdown(f"**你的答案：** <span style='color:red'>{user_answer_data}</span>", unsafe_allow_html=True)
                 
                 correct_answer_text = next((opt for opt in current_question["options"] if opt.strip().startswith(correct_answer_letter)), "【未找到】")
                 st.markdown(f"**正确答案：** <span style='color:green'>{correct_answer_text}</span>", unsafe_allow_html=True)
