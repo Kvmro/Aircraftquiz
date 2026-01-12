@@ -502,26 +502,77 @@ def main():
         is_submitted = question_id in st.session_state.submitted_answers
         user_answer_data = st.session_state.submitted_answers.get(question_id)
 
-        # 核心修改3：自适应渲染单选/多选组件
+        # 自适应渲染单选/多选组件 - 自动提交版本
         if not is_submitted:
+            # 提交答案的函数
+            def submit_answer():
+                if is_multiple:
+                    # 收集多选题用户选择
+                    selected_options = []
+                    for opt in current_question["options"]:
+                        key = f"q_{question_id}_opt_{opt[:5]}"
+                        if key in st.session_state and st.session_state[key]:
+                            selected_options.append(opt)
+                    user_answer = selected_options
+                else:
+                    # 获取单选题用户选择
+                    key = f"q_{question_id}"
+                    user_answer = st.session_state.get(key, None)
+                
+                # 空答案校验
+                if (is_multiple and len(user_answer) == 0) or (not is_multiple and user_answer is None):
+                    return  # 空答案不提交
+                
+                st.session_state.submitted_answers[question_id] = user_answer
+                
+                # 答案正确性校验
+                if is_multiple:
+                    # 多选题：提取用户选择的字母集合 vs 正确答案集合
+                    user_answer_letters = set([opt.split(".")[0].strip().upper() for opt in user_answer])
+                    correct_letters = current_question["answer"]
+                    is_correct = user_answer_letters == correct_letters
+                else:
+                    # 单选题：原有校验逻辑
+                    user_answer_letter = user_answer.split(".")[0].strip().upper()
+                    is_correct = user_answer_letter == current_question["answer"]
+                
+                # 更新学习进度
+                if is_correct:
+                    st.session_state.correct_ids.add(question_id)
+                    st.session_state.incorrect_ids.discard(question_id)
+                    st.session_state.error_counts.pop(str(question_id), None)
+                    st.session_state.last_wrong_answers.pop(str(question_id), None)
+                else:
+                    st.session_state.incorrect_ids.add(question_id)
+                    st.session_state.correct_ids.discard(question_id)
+                    st.session_state.error_counts[str(question_id)] = st.session_state.error_counts.get(str(question_id), 0) + 1
+                    st.session_state.last_wrong_answers[str(question_id)] = user_answer
+                
+                # 保存进度
+                progress_to_save = {
+                    "correct_ids": st.session_state.correct_ids,
+                    "incorrect_ids": st.session_state.incorrect_ids,
+                    "error_counts": st.session_state.error_counts,
+                    "last_wrong_answers": st.session_state.last_wrong_answers
+                }
+                save_progress(st.session_state.user_id, progress_to_save, st.session_state.user_row_id)
+            
             if is_multiple:
-                # 多选题：使用复选框组件，收集用户选择
-                selected_options = []
+                # 多选题：使用复选框组件，选择后自动提交
                 for opt in current_question["options"]:
-                    is_checked = st.checkbox(
+                    st.checkbox(
                         opt,
-                        key=f"q_{question_id}_opt_{opt[:5]}"
+                        key=f"q_{question_id}_opt_{opt[:5]}",
+                        on_change=submit_answer
                     )
-                    if is_checked:
-                        selected_options.append(opt)
-                user_answer_to_submit = selected_options
             else:
-                # 单选题：使用原有单选组件
-                user_answer_to_submit = st.radio(
+                # 单选题：使用单选组件，选择后自动提交
+                st.radio(
                     "请选择答案：",
                     current_question["options"],
                     key=f"q_{question_id}",
-                    index=None
+                    index=None,
+                    on_change=submit_answer
                 )
         else:
             # 已提交：禁用组件，显示用户之前的选择
@@ -542,49 +593,7 @@ def main():
                     index=current_question["options"].index(user_answer_data) if user_answer_data else None,
                     disabled=True
                 )
-
-        # 核心修改4：提交答案逻辑（适配单选/多选）
-        if not is_submitted:
-            if st.button("✅ 提交答案", type="primary"):
-                # 空答案校验
-                if (is_multiple and len(user_answer_to_submit) == 0) or (not is_multiple and user_answer_to_submit is None):
-                    st.warning("⚠️ 请选择至少一个答案后提交！")
-                else:
-                    st.session_state.submitted_answers[question_id] = user_answer_to_submit
-                    
-                    # 答案正确性校验
-                    if is_multiple:
-                        # 多选题：提取用户选择的字母集合 vs 正确答案集合
-                        user_answer_letters = set([opt.split(".")[0].strip().upper() for opt in user_answer_to_submit])
-                        correct_letters = current_question["answer"]
-                        is_correct = user_answer_letters == correct_letters
-                    else:
-                        # 单选题：原有校验逻辑
-                        user_answer_letter = user_answer_to_submit.split(".")[0].strip().upper()
-                        is_correct = user_answer_letter == current_question["answer"]
-                    
-                    # 更新学习进度
-                    if is_correct:
-                        st.session_state.correct_ids.add(question_id)
-                        st.session_state.incorrect_ids.discard(question_id)
-                        st.session_state.error_counts.pop(str(question_id), None)
-                        st.session_state.last_wrong_answers.pop(str(question_id), None)
-                    else:
-                        st.session_state.incorrect_ids.add(question_id)
-                        st.session_state.correct_ids.discard(question_id)
-                        st.session_state.error_counts[str(question_id)] = st.session_state.error_counts.get(str(question_id), 0) + 1
-                        st.session_state.last_wrong_answers[str(question_id)] = user_answer_to_submit
-                    
-                    # 保存进度
-                    progress_to_save = {
-                        "correct_ids": st.session_state.correct_ids,
-                        "incorrect_ids": st.session_state.incorrect_ids,
-                        "error_counts": st.session_state.error_counts,
-                        "last_wrong_answers": st.session_state.last_wrong_answers
-                    }
-                    save_progress(st.session_state.user_id, progress_to_save, st.session_state.user_row_id)
-                    st.rerun()
-        else:
+            
             # 核心修改5：提交后展示正确/错误结果（适配单选/多选）
             st.divider()
             if is_multiple:
