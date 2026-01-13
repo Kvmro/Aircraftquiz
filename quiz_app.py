@@ -608,6 +608,10 @@ def main():
         if not is_submitted:
             # 提交答案的通用函数
             def submit_answer():
+                # 检查答案是否已经提交，避免重复提交
+                if question_id in st.session_state.submitted_answers:
+                    return
+                    
                 if is_multiple:
                     # 收集多选题用户选择
                     selected_options = []
