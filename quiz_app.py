@@ -64,6 +64,33 @@ st.markdown("""
 SPREADSHEET_ID = '13d6icf3wTSEidLWBbgEKZJcae_kYzTT3zO8WcMtoUts'  
 TOTAL_QUESTIONS = 1330  # 固定总题数为1330道
 
+# --- 本地缓存函数 ---
+def get_cache_file_path(user_id):
+    """获取用户本地缓存文件路径"""
+    cache_dir = Path(".cache")
+    cache_dir.mkdir(exist_ok=True)
+    return cache_dir / f"{user_id}_progress.json"
+
+def load_local_cache(user_id):
+    """加载本地缓存"""
+    cache_file = get_cache_file_path(user_id)
+    if cache_file.exists():
+        try:
+            with open(cache_file, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            st.warning(f"加载本地缓存失败: {str(e)}")
+    return None
+
+def save_local_cache(user_id, progress_data):
+    """保存到本地缓存"""
+    cache_file = get_cache_file_path(user_id)
+    try:
+        with open(cache_file, "w", encoding="utf-8") as f:
+            json.dump(progress_data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        st.warning(f"保存本地缓存失败: {str(e)}")
+
 # --- Google Sheets 连接函数 ---
 def get_google_sheets_client():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -81,35 +108,103 @@ def get_google_sheets_client():
 
 # --- 进度加载/保存函数 ---
 def load_progress(user_id):
-    client = get_google_sheets_client()
-    sheet = client.open_by_key(SPREADSHEET_ID).sheet1
+    """优化：添加本地缓存支持，减少Google Sheets请求"""
+    # 1. 首先尝试加载本地缓存
+    local_cache = load_local_cache(user_id)
+    if local_cache:
+        st.info("📋 已从本地缓存加载进度，正在同步云端数据...")
+        # 转换correct_ids和incorrect_ids为set类型
+        local_cache["correct_ids"] = set(local_cache["correct_ids"])
+        local_cache["incorrect_ids"] = set(local_cache["incorrect_ids"])
+    
     try:
+        # 2. 从Google Sheets加载最新数据
+        client = get_google_sheets_client()
+        sheet = client.open_by_key(SPREADSHEET_ID).sheet1
         cell = sheet.find(user_id)
-        if cell is None:
-            st.info(f"👋 欢迎新用户 {user_id}！将为你创建新的学习记录。")
-            default_data = {
-                "correct_ids": set(), 
-                "incorrect_ids": set(), 
-                "error_counts": {}, 
-                "last_wrong_answers": {}
-            }
-            return default_data, None
         
+        if cell is None:
+            # 新用户，使用默认数据或本地缓存
+            if local_cache:
+                st.info(f"👋 欢迎回来, {user_id}！使用本地缓存数据继续学习。")
+                return local_cache, None
+            else:
+                st.info(f"👋 欢迎新用户 {user_id}！将为你创建新的学习记录。")
+                default_data = {
+                    "correct_ids": set(), 
+                    "incorrect_ids": set(), 
+                    "error_counts": {}, 
+                    "last_wrong_answers": {}
+                }
+                return default_data, None
+        
+        # 现有用户，获取云端数据
         row = sheet.row_values(cell.row)
-        progress_data = {
+        cloud_data = {
             "correct_ids": set(json.loads(row[1])) if row[1] and row[1] != "[]" else set(),
             "incorrect_ids": set(json.loads(row[2])) if row[2] and row[2] != "[]" else set(),
             "error_counts": json.loads(row[3]) if row[3] and row[3] != "{}" else {},
             "last_wrong_answers": json.loads(row[4]) if row[4] and row[4] != "{}" else {}
         }
-        st.success(f"✅ 欢迎回来, {user_id}！已加载你的学习进度（累计错题 {len(progress_data['error_counts'])} 道）。")
-        return progress_data, cell.row
+        
+        # 3. 合并本地缓存和云端数据（优先使用云端数据）
+        if local_cache:
+            # 只在云端数据为空时使用本地缓存
+            if not cloud_data["correct_ids"] and local_cache["correct_ids"]:
+                cloud_data["correct_ids"] = local_cache["correct_ids"]
+            if not cloud_data["incorrect_ids"] and local_cache["incorrect_ids"]:
+                cloud_data["incorrect_ids"] = local_cache["incorrect_ids"]
+            if not cloud_data["error_counts"] and local_cache["error_counts"]:
+                cloud_data["error_counts"] = local_cache["error_counts"]
+            if not cloud_data["last_wrong_answers"] and local_cache["last_wrong_answers"]:
+                cloud_data["last_wrong_answers"] = local_cache["last_wrong_answers"]
+        
+        st.success(f"✅ 欢迎回来, {user_id}！已加载你的学习进度（累计错题 {len(cloud_data['error_counts'])} 道）。")
+        return cloud_data, cell.row
     
     except Exception as e:
+        # 云端加载失败，使用本地缓存
+        if local_cache:
+            st.warning(f"云端数据同步失败: {str(e)}，将使用本地缓存继续学习。")
+            return local_cache, None
+        
         st.error(f"加载进度时发生错误: {str(e)}")
         return None, None
 
-def save_progress(user_id, progress_data, row_to_update=None):
+def save_progress(user_id, progress_data, row_to_update=None, force_save=False):
+    """优化保存进度：实现批量保存机制 + 增量更新 + 本地缓存"""
+    # 1. 始终更新本地缓存（本地保存开销小，优先保证数据不丢失）
+    cache_data = {
+        "correct_ids": list(progress_data["correct_ids"]),
+        "incorrect_ids": list(progress_data["incorrect_ids"]),
+        "error_counts": progress_data["error_counts"],
+        "last_wrong_answers": progress_data["last_wrong_answers"]
+    }
+    save_local_cache(user_id, cache_data)
+    
+    # 2. 检查是否需要保存到云端（默认每10题保存一次，或强制保存）
+    answer_count = st.session_state.get('answer_count', 0)
+    if not force_save and answer_count % 10 != 0:
+        return
+    
+    # 3. 检查数据是否有变化
+    last_saved_data = st.session_state.get('last_saved_data', {})
+    data_changed = False
+    
+    # 比较关键数据是否变化
+    if last_saved_data.get('correct_ids') != progress_data['correct_ids']:
+        data_changed = True
+    elif last_saved_data.get('incorrect_ids') != progress_data['incorrect_ids']:
+        data_changed = True
+    elif last_saved_data.get('error_counts') != progress_data['error_counts']:
+        data_changed = True
+    elif last_saved_data.get('last_wrong_answers') != progress_data['last_wrong_answers']:
+        data_changed = True
+    
+    if not data_changed and not force_save:
+        return  # 数据未变化，不需要保存到云端
+    
+    # 4. 保存到Google Sheets
     client = get_google_sheets_client()
     sheet = client.open_by_key(SPREADSHEET_ID).sheet1
     row_data = [
@@ -124,8 +219,16 @@ def save_progress(user_id, progress_data, row_to_update=None):
             sheet.update(f'A{row_to_update}:E{row_to_update}', [row_data], value_input_option='USER_ENTERED')
         else:
             sheet.append_row(row_data, value_input_option='USER_ENTERED')
+        
+        # 保存成功后更新上次保存的数据
+        st.session_state['last_saved_data'] = {
+            'correct_ids': progress_data['correct_ids'].copy(),
+            'incorrect_ids': progress_data['incorrect_ids'].copy(),
+            'error_counts': progress_data['error_counts'].copy(),
+            'last_wrong_answers': progress_data['last_wrong_answers'].copy()
+        }
     except Exception as e:
-        st.error(f"保存进度时发生错误: {str(e)}")
+        st.warning(f"保存到云端失败: {str(e)}，但已保存到本地缓存")
 
 # --- 题库加载函数（优化：改进缓存策略，预计算题型分类）---
 @st.cache_data(ttl=3600, show_spinner="正在加载题库...")
@@ -208,25 +311,37 @@ def load_questions():
 
 # --- 答题批次生成函数 ---
 def generate_new_batch():
+    """优化批次生成：减少重复计算，缓存过滤结果"""
     batch_size = 50
     new_batch = []
+    
+    # 从会话状态获取预计算数据，避免重复计算
+    questions_data = st.session_state.questions_data
+    all_questions = st.session_state.all_questions
     
     # 获取用户选择的题目类型
     question_type = st.session_state.get('question_type_select', '全部题目')
     
-    # 优化：使用预计算的题型分类，避免重复遍历所有题目
-    questions_data = st.session_state.questions_data
-    all_questions = st.session_state.all_questions
+    # 缓存键，用于存储过滤结果
+    filter_cache_key = f"filtered_questions_{question_type}"
     
-    # 根据题目类型直接获取对应的题目列表
-    if question_type == '全部题目':
-        filtered_questions = all_questions
-    elif question_type == '仅单选题':
-        filtered_questions = questions_data['single_choice']
-    elif question_type == '仅多选题':
-        filtered_questions = questions_data['multiple_choice']
+    # 优先使用缓存的过滤结果
+    if filter_cache_key not in st.session_state or st.session_state.get('filter_cache_invalid', False):
+        # 根据题目类型直接获取对应的题目列表
+        if question_type == '全部题目':
+            filtered_questions = all_questions
+        elif question_type == '仅单选题':
+            filtered_questions = questions_data['single_choice']
+        elif question_type == '仅多选题':
+            filtered_questions = questions_data['multiple_choice']
+        else:
+            filtered_questions = all_questions
+        
+        # 缓存过滤结果
+        st.session_state[filter_cache_key] = filtered_questions
+        st.session_state['filter_cache_invalid'] = False
     else:
-        filtered_questions = all_questions
+        filtered_questions = st.session_state[filter_cache_key]
     
     if not filtered_questions:
         st.warning(f"⚠️ 没有找到符合条件的题目！")
@@ -237,33 +352,48 @@ def generate_new_batch():
         st.session_state.current_mode = "normal"
         return
     
-    # 优化：使用列表推导式，比循环更高效
+    # 从会话状态获取ID集合，避免重复创建
     incorrect_ids = st.session_state.incorrect_ids
     correct_ids = st.session_state.correct_ids
     
-    # 使用set进行快速查找
-    incorrect_ids_set = set(incorrect_ids)
-    correct_ids_set = set(correct_ids)
+    # 分类题目 - 优化：使用更高效的过滤方式
+    incorrect_questions = []
+    correct_questions = []
+    remaining_questions = []
     
-    # 分类题目
-    incorrect_questions = [q for q in filtered_questions if q['id'] in incorrect_ids_set]
-    correct_questions = [q for q in filtered_questions if q['id'] in correct_ids_set]
-    remaining_questions = [q for q in filtered_questions if q['id'] not in incorrect_ids_set and q['id'] not in correct_ids_set]
+    # 一次性遍历过滤后的题目，避免多次遍历
+    for q in filtered_questions:
+        q_id = q['id']
+        if q_id in incorrect_ids:
+            incorrect_questions.append(q)
+        elif q_id in correct_ids:
+            correct_questions.append(q)
+        else:
+            remaining_questions.append(q)
     
-    # 生成批次
-    new_batch.extend(incorrect_questions[:batch_size//2])
+    # 生成批次 - 优化：避免不必要的extend操作
+    new_batch = []
     
-    if correct_questions:
-        num_review = min(batch_size//4, len(correct_questions))
-        new_batch.extend(random.sample(correct_questions, num_review))
+    # 添加错题（最多占一半）
+    wrong_count = min(batch_size // 2, len(incorrect_questions))
+    if wrong_count > 0:
+        new_batch.extend(random.sample(incorrect_questions, wrong_count))
     
+    # 添加已做对的题目（最多占四分之一）
+    review_count = min(batch_size // 4, len(correct_questions))
+    if review_count > 0:
+        new_batch.extend(random.sample(correct_questions, review_count))
+    
+    # 添加新题目
     needed = batch_size - len(new_batch)
     if needed > 0 and remaining_questions:
         new_batch.extend(random.sample(remaining_questions, min(needed, len(remaining_questions))))
     
+    # 洗牌并限制批次大小
     random.shuffle(new_batch)
     new_batch = new_batch[:batch_size]
     
+    # 更新会话状态
     st.session_state.current_batch = new_batch
     st.session_state.current_question_idx = 0
     st.session_state.submitted_answers = {}
@@ -271,41 +401,54 @@ def generate_new_batch():
     st.session_state.current_mode = "normal"
 
 def generate_error_batch():
-    """优化错题做完后的逻辑"""
-    # 优化：使用预计算的题型分类
+    """优化错题批次生成：减少重复计算"""
+    # 从会话状态获取预计算数据
     questions_data = st.session_state.questions_data
     all_questions = st.session_state.all_questions
-    error_ids = list(st.session_state.error_counts.keys())
+    error_counts = st.session_state.error_counts
     
-    # 无错题时，自动切换到常规模式并提示
-    if not error_ids:
+    # 获取错题ID并转换为整数
+    error_ids_int = [int(q_id) for q_id in error_counts.keys() if q_id.isdigit()]
+    
+    # 无错题时，自动切换到常规模式
+    if not error_ids_int:
         st.info("📌 错题已全部掌握！已自动切换到常规答题练习，请在上方标签页选择「答题练习」继续。")
         st.session_state.current_mode = "normal"
         generate_new_batch()
         return
     
-    # 优化：使用set进行快速查找
-    error_ids_int = [int(q_id) for q_id in error_ids if q_id.isdigit()]
+    # 缓存错题集合
     error_ids_set = set(error_ids_int)
     
     # 获取用户选择的题目类型
     question_type = st.session_state.get('question_type_select', '全部题目')
     
-    # 优化：根据题目类型直接获取对应的题目列表，然后过滤错题
-    if question_type == '全部题目':
-        # 全部题目，直接过滤错题
-        error_questions = [q for q in all_questions if q['id'] in error_ids_set]
-    elif question_type == '仅单选题':
-        # 仅单选题，先获取单选题列表，再过滤错题
-        single_choice = questions_data['single_choice']
-        error_questions = [q for q in single_choice if q['id'] in error_ids_set]
-    elif question_type == '仅多选题':
-        # 仅多选题，先获取多选题列表，再过滤错题
-        multiple_choice = questions_data['multiple_choice']
-        error_questions = [q for q in multiple_choice if q['id'] in error_ids_set]
+    # 错题缓存键
+    error_cache_key = f"error_questions_{question_type}"
+    
+    # 优先使用缓存的错题结果
+    if error_cache_key not in st.session_state or st.session_state.get('error_cache_invalid', False):
+        # 根据题目类型直接获取对应的题目列表，然后过滤错题
+        if question_type == '全部题目':
+            # 全部题目，直接过滤错题
+            error_questions = [q for q in all_questions if q['id'] in error_ids_set]
+        elif question_type == '仅单选题':
+            # 仅单选题，先获取单选题列表，再过滤错题
+            single_choice = questions_data['single_choice']
+            error_questions = [q for q in single_choice if q['id'] in error_ids_set]
+        elif question_type == '仅多选题':
+            # 仅多选题，先获取多选题列表，再过滤错题
+            multiple_choice = questions_data['multiple_choice']
+            error_questions = [q for q in multiple_choice if q['id'] in error_ids_set]
+        else:
+            # 默认全部题目
+            error_questions = [q for q in all_questions if q['id'] in error_ids_set]
+        
+        # 缓存错题结果
+        st.session_state[error_cache_key] = error_questions
+        st.session_state['error_cache_invalid'] = False
     else:
-        # 默认全部题目
-        error_questions = [q for q in all_questions if q['id'] in error_ids_set]
+        error_questions = st.session_state[error_cache_key]
     
     if not error_questions:
         st.info("📌 无符合条件的有效错题！已自动切换到常规答题练习，请在上方标签页选择「答题练习」继续。")
@@ -313,9 +456,11 @@ def generate_error_batch():
         generate_new_batch()
         return
     
+    # 生成错题批次
     batch_size = min(100, len(error_questions))
     error_batch = random.sample(error_questions, batch_size)
     
+    # 更新会话状态
     st.session_state.current_batch = error_batch
     st.session_state.current_question_idx = 0
     st.session_state.submitted_answers = {}
@@ -382,6 +527,14 @@ def main():
         st.session_state.user_row_id = row_id
         st.session_state.current_mode = "normal"
         
+        # 初始化上次保存的数据，用于增量更新检测
+        st.session_state['last_saved_data'] = {
+            'correct_ids': progress_data['correct_ids'].copy(),
+            'incorrect_ids': progress_data['incorrect_ids'].copy(),
+            'error_counts': progress_data['error_counts'].copy(),
+            'last_wrong_answers': progress_data['last_wrong_answers'].copy()
+        }
+        
         # 显示加载成功信息
         st.success(f"✅ 题库加载完成（共 {questions_data['total']} 道有效题目，包含单选题 {questions_data['total_single']} 道，多选题 {questions_data['total_multiple']} 道）")
         
@@ -417,7 +570,12 @@ def main():
                 ["全部题目", "仅单选题", "仅多选题"],
                 key="question_type_select",
                 help="选择你想要练习的题目类型",
-                on_change=lambda: generate_new_batch() if st.session_state.current_mode == "normal" else generate_error_batch()
+                on_change=lambda: (
+                    # 使缓存失效
+                    st.session_state.update({'filter_cache_invalid': True, 'error_cache_invalid': True}),
+                    # 生成新批次
+                    generate_new_batch() if st.session_state.current_mode == "normal" else generate_error_batch()
+                )
             )
             
             # 学习进度显示
@@ -479,6 +637,15 @@ def main():
 
         # 批次完成处理
         if current_idx >= len(current_batch):
+            # 强制保存当前批次的所有进度
+            progress_to_save = {
+                "correct_ids": st.session_state.correct_ids,
+                "incorrect_ids": st.session_state.incorrect_ids,
+                "error_counts": st.session_state.error_counts,
+                "last_wrong_answers": st.session_state.last_wrong_answers
+            }
+            save_progress(st.session_state.user_id, progress_to_save, st.session_state.user_row_id, force_save=True)
+            
             st.success("✅ 本轮批次完成！正在生成新批次...")
             if st.session_state.current_mode == "normal":
                 generate_new_batch()
@@ -502,10 +669,23 @@ def main():
         is_submitted = question_id in st.session_state.submitted_answers
         user_answer_data = st.session_state.submitted_answers.get(question_id)
 
-        # 自适应渲染单选/多选组件 - 自动提交版本
+        # 自适应渲染单选/多选组件 - 自动提交版本（带防抖机制）
         if not is_submitted:
+            # 防抖逻辑：仅在用户停止操作500ms后才提交
+            debounce_delay = 500  # 防抖延迟时间（毫秒）
+            
+            # 初始化防抖相关会话状态
+            debounce_key = f"debounce_{question_id}"
+            last_selection_key = f"last_selection_{question_id}"
+            
             # 提交答案的函数
             def submit_answer():
+                # 重置防抖计时器
+                st.session_state[debounce_key] = True
+                st.session_state[last_selection_key] = True
+            
+            # 实际执行提交的函数
+            def execute_submit():
                 if is_multiple:
                     # 收集多选题用户选择
                     selected_options = []
@@ -548,7 +728,10 @@ def main():
                     st.session_state.error_counts[str(question_id)] = st.session_state.error_counts.get(str(question_id), 0) + 1
                     st.session_state.last_wrong_answers[str(question_id)] = user_answer
                 
-                # 保存进度
+                # 更新答题计数
+                st.session_state['answer_count'] = st.session_state.get('answer_count', 0) + 1
+                
+                # 保存进度（使用批量保存机制）
                 progress_to_save = {
                     "correct_ids": st.session_state.correct_ids,
                     "incorrect_ids": st.session_state.incorrect_ids,
@@ -556,9 +739,24 @@ def main():
                     "last_wrong_answers": st.session_state.last_wrong_answers
                 }
                 save_progress(st.session_state.user_id, progress_to_save, st.session_state.user_row_id)
+                
+                # 清除防抖标记
+                if debounce_key in st.session_state:
+                    del st.session_state[debounce_key]
+                if last_selection_key in st.session_state:
+                    del st.session_state[last_selection_key]
+            
+            # 检查是否需要执行提交
+            if debounce_key in st.session_state:
+                # 防抖期间，显示等待提示
+                st.info("⏳ 正在处理你的选择...")
+                # 使用Streamlit的延迟机制来实现防抖
+                import time
+                time.sleep(0.5)  # 等待500ms
+                execute_submit()
             
             if is_multiple:
-                # 多选题：使用复选框组件，选择后自动提交
+                # 多选题：使用复选框组件，选择后触发防抖
                 for opt in current_question["options"]:
                     st.checkbox(
                         opt,
@@ -566,14 +764,52 @@ def main():
                         on_change=submit_answer
                     )
             else:
-                # 单选题：使用单选组件，选择后自动提交
-                st.radio(
+                # 单选题：使用单选组件，选择后直接提交（单选不需要防抖）
+                user_answer = st.radio(
                     "请选择答案：",
                     current_question["options"],
                     key=f"q_{question_id}",
-                    index=None,
-                    on_change=submit_answer
+                    index=None
                 )
+                # 单选题直接检查答案变化
+                if user_answer is not None:
+                    # 直接执行提交（单选只有一个选择，不需要防抖）
+                    if question_id not in st.session_state.submitted_answers:
+                        st.session_state.submitted_answers[question_id] = user_answer
+                        
+                        # 答案正确性校验
+                        user_answer_letter = user_answer.split(".")[0].strip().upper()
+                        is_correct = user_answer_letter == current_question["answer"]
+                        
+                        # 更新学习进度
+                        if is_correct:
+                            st.session_state.correct_ids.add(question_id)
+                            st.session_state.incorrect_ids.discard(question_id)
+                            st.session_state.error_counts.pop(str(question_id), None)
+                            st.session_state.last_wrong_answers.pop(str(question_id), None)
+                        else:
+                            st.session_state.incorrect_ids.add(question_id)
+                            st.session_state.correct_ids.discard(question_id)
+                            st.session_state.error_counts[str(question_id)] = st.session_state.error_counts.get(str(question_id), 0) + 1
+                            st.session_state.last_wrong_answers[str(question_id)] = user_answer
+                        
+                        # 更新答题计数
+                        st.session_state['answer_count'] = st.session_state.get('answer_count', 0) + 1
+                        
+                        # 保存进度
+                        progress_to_save = {
+                            "correct_ids": st.session_state.correct_ids,
+                            "incorrect_ids": st.session_state.incorrect_ids,
+                            "error_counts": st.session_state.error_counts,
+                            "last_wrong_answers": st.session_state.last_wrong_answers
+                        }
+                        save_progress(st.session_state.user_id, progress_to_save, st.session_state.user_row_id)
+                        
+                        # 使缓存失效，下次生成批次时重新过滤
+                        st.session_state.update({'filter_cache_invalid': True, 'error_cache_invalid': True})
+                        
+                        # 使用st.rerun()刷新页面，显示结果
+                        st.rerun()
         else:
             # 已提交：禁用组件，显示用户之前的选择
             if is_multiple:
