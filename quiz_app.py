@@ -682,11 +682,59 @@ def main():
                         key=f"q_{question_id}_opt_{opt[:5]}"
                     )
                 # 多选题添加提交按钮
-                st.button(
+                if st.button(
                     "📤 提交答案",
-                    on_click=submit_answer,
                     type="primary"
-                )
+                ):
+                    # 直接执行提交逻辑，而不是使用on_click回调
+                    # 收集多选题用户选择
+                    selected_options = []
+                    for opt in current_question["options"]:
+                        key = f"q_{question_id}_opt_{opt[:5]}"
+                        if key in st.session_state and st.session_state[key]:
+                            selected_options.append(opt)
+                    user_answer = selected_options
+                    
+                    # 空答案校验
+                    if len(user_answer) == 0:
+                        st.warning("⚠️ 请选择至少一个答案后提交！")
+                    else:
+                        st.session_state.submitted_answers[question_id] = user_answer
+                        
+                        # 答案正确性校验
+                        user_answer_letters = set([opt.split(".")[0].strip().upper() for opt in user_answer])
+                        correct_letters = current_question["answer"]
+                        is_correct = user_answer_letters == correct_letters
+                        
+                        # 更新学习进度
+                        if is_correct:
+                            st.session_state.correct_ids.add(question_id)
+                            st.session_state.incorrect_ids.discard(question_id)
+                            st.session_state.error_counts.pop(str(question_id), None)
+                            st.session_state.last_wrong_answers.pop(str(question_id), None)
+                        else:
+                            st.session_state.incorrect_ids.add(question_id)
+                            st.session_state.correct_ids.discard(question_id)
+                            st.session_state.error_counts[str(question_id)] = st.session_state.error_counts.get(str(question_id), 0) + 1
+                            st.session_state.last_wrong_answers[str(question_id)] = user_answer
+                        
+                        # 更新答题计数
+                        st.session_state['answer_count'] = st.session_state.get('answer_count', 0) + 1
+                        
+                        # 保存进度（使用批量保存机制）
+                        progress_to_save = {
+                            "correct_ids": st.session_state.correct_ids,
+                            "incorrect_ids": st.session_state.incorrect_ids,
+                            "error_counts": st.session_state.error_counts,
+                            "last_wrong_answers": st.session_state.last_wrong_answers
+                        }
+                        save_progress(st.session_state.user_id, progress_to_save, st.session_state.user_row_id)
+                        
+                        # 使缓存失效，下次生成批次时重新过滤
+                        st.session_state.update({'filter_cache_invalid': True, 'error_cache_invalid': True})
+                        
+                        # 刷新页面，显示结果
+                        st.rerun()
             else:
                 # 单选题：使用单选组件，选择后直接提交
                 user_answer = st.radio(
