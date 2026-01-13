@@ -64,33 +64,6 @@ st.markdown("""
 SPREADSHEET_ID = '13d6icf3wTSEidLWBbgEKZJcae_kYzTT3zO8WcMtoUts'  
 TOTAL_QUESTIONS = 1330  # 固定总题数为1330道
 
-# --- 本地缓存函数 ---
-def get_cache_file_path(user_id):
-    """获取用户本地缓存文件路径"""
-    cache_dir = Path(".cache")
-    cache_dir.mkdir(exist_ok=True)
-    return cache_dir / f"{user_id}_progress.json"
-
-def load_local_cache(user_id):
-    """加载本地缓存"""
-    cache_file = get_cache_file_path(user_id)
-    if cache_file.exists():
-        try:
-            with open(cache_file, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception as e:
-            st.warning(f"加载本地缓存失败: {str(e)}")
-    return None
-
-def save_local_cache(user_id, progress_data):
-    """保存到本地缓存"""
-    cache_file = get_cache_file_path(user_id)
-    try:
-        with open(cache_file, "w", encoding="utf-8") as f:
-            json.dump(progress_data, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        st.warning(f"保存本地缓存失败: {str(e)}")
-
 # --- Google Sheets 连接函数 ---
 def get_google_sheets_client():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -108,35 +81,23 @@ def get_google_sheets_client():
 
 # --- 进度加载/保存函数 ---
 def load_progress(user_id):
-    """优化：添加本地缓存支持，减少Google Sheets请求"""
-    # 1. 首先尝试加载本地缓存
-    local_cache = load_local_cache(user_id)
-    if local_cache:
-        st.info("📋 已从本地缓存加载进度，正在同步云端数据...")
-        # 转换correct_ids和incorrect_ids为set类型
-        local_cache["correct_ids"] = set(local_cache["correct_ids"])
-        local_cache["incorrect_ids"] = set(local_cache["incorrect_ids"])
-    
+    "加载进度"
     try:
-        # 2. 从Google Sheets加载最新数据
+        # 从Google Sheets加载最新数据
         client = get_google_sheets_client()
         sheet = client.open_by_key(SPREADSHEET_ID).sheet1
         cell = sheet.find(user_id)
         
         if cell is None:
-            # 新用户，使用默认数据或本地缓存
-            if local_cache:
-                st.info(f"👋 欢迎回来, {user_id}！使用本地缓存数据继续学习。")
-                return local_cache, None
-            else:
-                st.info(f"👋 欢迎新用户 {user_id}！将为你创建新的学习记录。")
-                default_data = {
-                    "correct_ids": set(), 
-                    "incorrect_ids": set(), 
-                    "error_counts": {}, 
-                    "last_wrong_answers": {}
-                }
-                return default_data, None
+            # 新用户
+            st.info(f"👋 欢迎新用户 {user_id}！将为你创建新的学习记录。")
+            default_data = {
+                "correct_ids": set(), 
+                "incorrect_ids": set(), 
+                "error_counts": {}, 
+                "last_wrong_answers": {}
+            }
+            return default_data, None
         
         # 现有用户，获取云端数据
         row = sheet.row_values(cell.row)
@@ -147,47 +108,20 @@ def load_progress(user_id):
             "last_wrong_answers": json.loads(row[4]) if row[4] and row[4] != "{}" else {}
         }
         
-        # 3. 合并本地缓存和云端数据（优先使用云端数据）
-        if local_cache:
-            # 只在云端数据为空时使用本地缓存
-            if not cloud_data["correct_ids"] and local_cache["correct_ids"]:
-                cloud_data["correct_ids"] = local_cache["correct_ids"]
-            if not cloud_data["incorrect_ids"] and local_cache["incorrect_ids"]:
-                cloud_data["incorrect_ids"] = local_cache["incorrect_ids"]
-            if not cloud_data["error_counts"] and local_cache["error_counts"]:
-                cloud_data["error_counts"] = local_cache["error_counts"]
-            if not cloud_data["last_wrong_answers"] and local_cache["last_wrong_answers"]:
-                cloud_data["last_wrong_answers"] = local_cache["last_wrong_answers"]
-        
         st.success(f"✅ 欢迎回来, {user_id}！已加载你的学习进度（累计错题 {len(cloud_data['error_counts'])} 道）。")
         return cloud_data, cell.row
     
     except Exception as e:
-        # 云端加载失败，使用本地缓存
-        if local_cache:
-            st.warning(f"云端数据同步失败: {str(e)}，将使用本地缓存继续学习。")
-            return local_cache, None
-        
         st.error(f"加载进度时发生错误: {str(e)}")
         return None, None
-
 def save_progress(user_id, progress_data, row_to_update=None, force_save=False):
-    """优化保存进度：实现批量保存机制 + 增量更新 + 本地缓存"""
-    # 1. 始终更新本地缓存（本地保存开销小，优先保证数据不丢失）
-    cache_data = {
-        "correct_ids": list(progress_data["correct_ids"]),
-        "incorrect_ids": list(progress_data["incorrect_ids"]),
-        "error_counts": progress_data["error_counts"],
-        "last_wrong_answers": progress_data["last_wrong_answers"]
-    }
-    save_local_cache(user_id, cache_data)
-    
-    # 2. 检查是否需要保存到云端（默认每10题保存一次，或强制保存）
+    "保存进度"
+    # 检查是否需要保存到云端（默认每10题保存一次，或强制保存）
     answer_count = st.session_state.get('answer_count', 0)
     if not force_save and answer_count % 10 != 0:
         return
     
-    # 3. 检查数据是否有变化
+    # 检查数据是否有变化
     last_saved_data = st.session_state.get('last_saved_data', {})
     data_changed = False
     
@@ -204,7 +138,7 @@ def save_progress(user_id, progress_data, row_to_update=None, force_save=False):
     if not data_changed and not force_save:
         return  # 数据未变化，不需要保存到云端
     
-    # 4. 保存到Google Sheets
+    # 保存到Google Sheets
     client = get_google_sheets_client()
     sheet = client.open_by_key(SPREADSHEET_ID).sheet1
     row_data = [
@@ -228,10 +162,11 @@ def save_progress(user_id, progress_data, row_to_update=None, force_save=False):
             'last_wrong_answers': progress_data['last_wrong_answers'].copy()
         }
     except Exception as e:
-        st.warning(f"保存到云端失败: {str(e)}，但已保存到本地缓存")
 
 # --- 题库加载函数（优化：改进缓存策略，预计算题型分类）---
-@st.cache_data(ttl=3600, show_spinner="正在加载题库...")
+        st.warning(f"保存到云端失败: {str(e)}")
+
+# --- 题库加载函数（优化：改进缓存策略，预计算题型分类）---
 def load_questions():
     try:
         with open("question_bank.json", "r", encoding="utf-8") as f:
@@ -282,12 +217,6 @@ def load_questions():
             normalized_questions.append(question)
             all_questions.append(question)
             if is_multiple:
-                # 多选题添加提交按钮
-                st.button(
-                    "📤 提交答案",
-                    on_click=submit_answer,
-                    type="primary"
-                )
                 multiple_choice.append(question)
             else:
                 single_choice.append(question)
