@@ -282,6 +282,12 @@ def load_questions():
             normalized_questions.append(question)
             all_questions.append(question)
             if is_multiple:
+                # 多选题添加提交按钮
+                st.button(
+                    "📤 提交答案",
+                    on_click=submit_answer,
+                    type="primary"
+                )
                 multiple_choice.append(question)
             else:
                 single_choice.append(question)
@@ -669,23 +675,10 @@ def main():
         is_submitted = question_id in st.session_state.submitted_answers
         user_answer_data = st.session_state.submitted_answers.get(question_id)
 
-        # 自适应渲染单选/多选组件 - 自动提交版本（带防抖机制）
+        # 自适应渲染单选/多选组件
         if not is_submitted:
-            # 防抖逻辑：仅在用户停止操作500ms后才提交
-            debounce_delay = 500  # 防抖延迟时间（毫秒）
-            
-            # 初始化防抖相关会话状态
-            debounce_key = f"debounce_{question_id}"
-            last_selection_key = f"last_selection_{question_id}"
-            
-            # 提交答案的函数
+            # 提交答案的通用函数
             def submit_answer():
-                # 重置防抖计时器
-                st.session_state[debounce_key] = True
-                st.session_state[last_selection_key] = True
-            
-            # 实际执行提交的函数
-            def execute_submit():
                 if is_multiple:
                     # 收集多选题用户选择
                     selected_options = []
@@ -694,14 +687,19 @@ def main():
                         if key in st.session_state and st.session_state[key]:
                             selected_options.append(opt)
                     user_answer = selected_options
+                    
+                    # 空答案校验
+                    if len(user_answer) == 0:
+                        st.warning("⚠️ 请选择至少一个答案后提交！")
+                        return
                 else:
                     # 获取单选题用户选择
                     key = f"q_{question_id}"
                     user_answer = st.session_state.get(key, None)
-                
-                # 空答案校验
-                if (is_multiple and len(user_answer) == 0) or (not is_multiple and user_answer is None):
-                    return  # 空答案不提交
+                    
+                    # 空答案校验
+                    if user_answer is None:
+                        return  # 单选题空答案不提交
                 
                 st.session_state.submitted_answers[question_id] = user_answer
                 
@@ -740,31 +738,27 @@ def main():
                 }
                 save_progress(st.session_state.user_id, progress_to_save, st.session_state.user_row_id)
                 
-                # 清除防抖标记
-                if debounce_key in st.session_state:
-                    del st.session_state[debounce_key]
-                if last_selection_key in st.session_state:
-                    del st.session_state[last_selection_key]
-            
-            # 检查是否需要执行提交
-            if debounce_key in st.session_state:
-                # 防抖期间，显示等待提示
-                st.info("⏳ 正在处理你的选择...")
-                # 使用Streamlit的延迟机制来实现防抖
-                import time
-                time.sleep(0.5)  # 等待500ms
-                execute_submit()
+                # 使缓存失效，下次生成批次时重新过滤
+                st.session_state.update({'filter_cache_invalid': True, 'error_cache_invalid': True})
+                
+                # 使用st.rerun()刷新页面，显示结果
+                st.rerun()
             
             if is_multiple:
-                # 多选题：使用复选框组件，选择后触发防抖
+                # 多选题：使用复选框组件，选择后不立即提交
                 for opt in current_question["options"]:
                     st.checkbox(
                         opt,
-                        key=f"q_{question_id}_opt_{opt[:5]}",
-                        on_change=submit_answer
+                        key=f"q_{question_id}_opt_{opt[:5]}"
                     )
+                # 多选题添加提交按钮
+                st.button(
+                    "📤 提交答案",
+                    on_click=submit_answer,
+                    type="primary"
+                )
             else:
-                # 单选题：使用单选组件，选择后直接提交（单选不需要防抖）
+                # 单选题：使用单选组件，选择后直接提交
                 user_answer = st.radio(
                     "请选择答案：",
                     current_question["options"],
@@ -810,8 +804,7 @@ def main():
                         
                         # 使用st.rerun()刷新页面，显示结果
                         st.rerun()
-        else:
-            # 已提交：禁用组件，显示用户之前的选择
+        else:# 已提交：禁用组件，显示用户之前的选择
             if is_multiple:
                 for opt in current_question["options"]:
                     is_checked = opt in user_answer_data
