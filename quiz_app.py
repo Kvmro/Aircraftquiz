@@ -673,9 +673,6 @@ def main():
                 
                 # 使缓存失效，下次生成批次时重新过滤
                 st.session_state.update({'filter_cache_invalid': True, 'error_cache_invalid': True})
-                
-                # 使用st.rerun()刷新页面，显示结果
-                st.rerun()
             
             if is_multiple:
                 # 多选题：使用复选框组件，选择后不立即提交
