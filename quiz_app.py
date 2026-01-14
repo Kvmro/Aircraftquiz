@@ -784,7 +784,7 @@ def main():
                         st.rerun()
         else:# 已提交：禁用组件，显示用户之前的选择
             if is_multiple:
-                for opt in current_question["options"]:
+                for opt in options:
                     is_checked = opt in user_answer_data
                     st.checkbox(
                         opt,
@@ -795,9 +795,9 @@ def main():
             else:
                 st.radio(
                     "你的答案：",
-                    current_question["options"],
+                    options,
                     key=f"q_{question_id}",
-                    index=current_question["options"].index(user_answer_data) if user_answer_data else None,
+                    index=options.index(user_answer_data) if user_answer_data else None,
                     disabled=True
                 )
             
