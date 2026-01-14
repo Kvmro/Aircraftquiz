@@ -604,6 +604,12 @@ def main():
         is_submitted = question_id in st.session_state.submitted_answers
         user_answer_data = st.session_state.submitted_answers.get(question_id)
 
+        # 选项乱序显示（在所有情况下都定义options变量）
+        options = current_question["options"].copy()
+        # 使用question_id作为随机种子，确保每次刷新页面时选项顺序一致
+        random.seed(question_id)
+        random.shuffle(options)
+
         # 自适应渲染单选/多选组件
         if not is_submitted:
             # 提交答案的通用函数
@@ -676,7 +682,7 @@ def main():
             
             if is_multiple:
                 # 多选题：使用复选框组件，选择后不立即提交
-                for opt in current_question["options"]:
+                for opt in options:
                     st.checkbox(
                         opt,
                         key=f"q_{question_id}_opt_{opt[:5]}"
@@ -689,7 +695,7 @@ def main():
                     # 直接执行提交逻辑，而不是使用on_click回调
                     # 收集多选题用户选择
                     selected_options = []
-                    for opt in current_question["options"]:
+                    for opt in options:
                         key = f"q_{question_id}_opt_{opt[:5]}"
                         if key in st.session_state and st.session_state[key]:
                             selected_options.append(opt)
@@ -739,7 +745,7 @@ def main():
                 # 单选题：使用单选组件，选择后直接提交
                 user_answer = st.radio(
                     "请选择答案：",
-                    current_question["options"],
+                    options,
                     key=f"q_{question_id}",
                     index=None
                 )
