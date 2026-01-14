@@ -814,12 +814,21 @@ def main():
                 else:
                     st.error("❌ 回答错误！")
                 
-                # 拼接多选题正确答案文本
-                correct_answer_texts = [opt for opt in current_question["options"] 
-                                        if opt.split(".")[0].strip().upper() in correct_letters]
-                st.markdown(f"**正确答案：** <span style='color:green'>{', '.join(correct_answer_texts)}</span>", unsafe_allow_html=True)
+                # 显示每个选项的正确/错误状态
+                st.write("#### 答题情况：")
+                for opt in options:
+                    opt_letter = opt.split(".")[0].strip().upper()
+                    if opt_letter in correct_letters:
+                        # 正确答案，使用绿色背景和加粗字体
+                        st.markdown(f"<div style='background-color: #d1fae5; padding: 0.5rem; border-radius: 0.5rem; margin: 0.25rem 0; font-weight: bold;'>✅ {opt}</div>", unsafe_allow_html=True)
+                    elif opt in user_answer_data:
+                        # 用户选择的错误答案，使用红色背景
+                        st.markdown(f"<div style='background-color: #fee2e2; padding: 0.5rem; border-radius: 0.5rem; margin: 0.25rem 0;'>❌ {opt}</div>", unsafe_allow_html=True)
+                    else:
+                        # 未选择的错误答案，使用灰色背景
+                        st.markdown(f"<div style='background-color: #f3f4f6; padding: 0.5rem; border-radius: 0.5rem; margin: 0.25rem 0;'>{opt}</div>", unsafe_allow_html=True)
             else:
-                # 单选题结果展示（原有逻辑）
+                # 单选题结果展示
                 user_answer_letter = user_answer_data.split(".")[0].strip().upper()
                 correct_answer_letter = current_question["answer"]
                 is_correct = user_answer_letter == correct_answer_letter
@@ -829,8 +838,19 @@ def main():
                 else:
                     st.error("❌ 回答错误！")
                 
-                correct_answer_text = next((opt for opt in current_question["options"] if opt.strip().startswith(correct_answer_letter)), "【未找到】")
-                st.markdown(f"**正确答案：** <span style='color:green'>{correct_answer_text}</span>", unsafe_allow_html=True)
+                # 显示每个选项的正确/错误状态
+                st.write("#### 答题情况：")
+                for opt in options:
+                    opt_letter = opt.split(".")[0].strip().upper()
+                    if opt_letter == correct_answer_letter:
+                        # 正确答案，使用绿色背景和加粗字体
+                        st.markdown(f"<div style='background-color: #d1fae5; padding: 0.5rem; border-radius: 0.5rem; margin: 0.25rem 0; font-weight: bold;'>✅ {opt}</div>", unsafe_allow_html=True)
+                    elif opt == user_answer_data:
+                        # 用户选择的错误答案，使用红色背景
+                        st.markdown(f"<div style='background-color: #fee2e2; padding: 0.5rem; border-radius: 0.5rem; margin: 0.25rem 0;'>❌ {opt}</div>", unsafe_allow_html=True)
+                    else:
+                        # 未选择的错误答案，使用灰色背景
+                        st.markdown(f"<div style='background-color: #f3f4f6; padding: 0.5rem; border-radius: 0.5rem; margin: 0.25rem 0;'>{opt}</div>", unsafe_allow_html=True)
             
             # 显示解析
             if current_question.get("explanation"):
