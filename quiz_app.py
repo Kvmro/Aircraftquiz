@@ -699,7 +699,8 @@ def main():
         is_multiple = current_question['is_multiple']  # 获取是否为多选题
         
         st.subheader(f"本轮进度：{current_idx + 1}/{len(current_batch)} 题")
-        st.write(f"### {current_question['question']}")
+        # 使用更柔和的样式显示题目
+        st.markdown(f"<div style='background-color: rgba(255, 255, 240, 0.9); padding: 1rem; border-radius: 0.75rem; margin: 0.5rem 0; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);'>### {current_question['question']}</div>", unsafe_allow_html=True)
         
         # 显示题型提示
         if is_multiple:
@@ -927,18 +928,18 @@ def main():
                     st.error("❌ 回答错误！")
                 
                 # 显示每个选项的正确/错误状态
-                st.write("#### 答题情况：")
+                st.markdown("<div style='background-color: rgba(255, 255, 240, 0.9); padding: 1rem; border-radius: 0.75rem; margin: 0.5rem 0; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);'>#### 答题情况：</div>", unsafe_allow_html=True)
                 for opt in options:
                     opt_letter = opt.split(".")[0].strip().upper()
                     if opt_letter in correct_letters:
-                        # 正确答案，使用绿色背景和加粗字体
-                        st.markdown(f"<div style='background-color: #d1fae5; padding: 0.5rem; border-radius: 0.5rem; margin: 0.25rem 0; font-weight: bold;'>✅ {opt}</div>", unsafe_allow_html=True)
+                        # 正确答案，使用更柔和的绿色背景
+                        st.markdown(f"<div style='background-color: #e6f9e6; padding: 0.5rem; border-radius: 0.5rem; margin: 0.25rem 0; font-weight: 500; color: #1e4620;'>✅ {opt}</div>", unsafe_allow_html=True)
                     elif opt in user_answer_data:
-                        # 用户选择的错误答案，使用红色背景
-                        st.markdown(f"<div style='background-color: #fee2e2; padding: 0.5rem; border-radius: 0.5rem; margin: 0.25rem 0;'>❌ {opt}</div>", unsafe_allow_html=True)
+                        # 用户选择的错误答案，使用更柔和的红色背景
+                        st.markdown(f"<div style='background-color: #fff3f3; padding: 0.5rem; border-radius: 0.5rem; margin: 0.25rem 0; color: #6b1e1e;'>❌ {opt}</div>", unsafe_allow_html=True)
                     else:
-                        # 未选择的错误答案，使用灰色背景
-                        st.markdown(f"<div style='background-color: #f3f4f6; padding: 0.5rem; border-radius: 0.5rem; margin: 0.25rem 0;'>{opt}</div>", unsafe_allow_html=True)
+                        # 未选择的错误答案，使用更柔和的灰色背景
+                        st.markdown(f"<div style='background-color: #f8f9fa; padding: 0.5rem; border-radius: 0.5rem; margin: 0.25rem 0; color: #495057;'>{opt}</div>", unsafe_allow_html=True)
             else:
                 # 单选题结果展示
                 user_answer_letter = user_answer_data.split(".")[0].strip().upper()
@@ -951,23 +952,23 @@ def main():
                     st.error("❌ 回答错误！")
                 
                 # 显示每个选项的正确/错误状态
-                st.write("#### 答题情况：")
+                st.markdown("<div style='background-color: rgba(255, 255, 240, 0.9); padding: 1rem; border-radius: 0.75rem; margin: 0.5rem 0; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);'>#### 答题情况：</div>", unsafe_allow_html=True)
                 for opt in options:
                     opt_letter = opt.split(".")[0].strip().upper()
                     if opt_letter == correct_answer_letter:
-                        # 正确答案，使用绿色背景和加粗字体
-                        st.markdown(f"<div style='background-color: #d1fae5; padding: 0.5rem; border-radius: 0.5rem; margin: 0.25rem 0; font-weight: bold;'>✅ {opt}</div>", unsafe_allow_html=True)
+                        # 正确答案，使用更柔和的绿色背景
+                        st.markdown(f"<div style='background-color: #e6f9e6; padding: 0.5rem; border-radius: 0.5rem; margin: 0.25rem 0; font-weight: 500; color: #1e4620;'>✅ {opt}</div>", unsafe_allow_html=True)
                     elif opt == user_answer_data:
-                        # 用户选择的错误答案，使用红色背景
-                        st.markdown(f"<div style='background-color: #fee2e2; padding: 0.5rem; border-radius: 0.5rem; margin: 0.25rem 0;'>❌ {opt}</div>", unsafe_allow_html=True)
+                        # 用户选择的错误答案，使用更柔和的红色背景
+                        st.markdown(f"<div style='background-color: #fff3f3; padding: 0.5rem; border-radius: 0.5rem; margin: 0.25rem 0; color: #6b1e1e;'>❌ {opt}</div>", unsafe_allow_html=True)
                     else:
-                        # 未选择的错误答案，使用灰色背景
-                        st.markdown(f"<div style='background-color: #f3f4f6; padding: 0.5rem; border-radius: 0.5rem; margin: 0.25rem 0;'>{opt}</div>", unsafe_allow_html=True)
+                        # 未选择的错误答案，使用更柔和的灰色背景
+                        st.markdown(f"<div style='background-color: #f8f9fa; padding: 0.5rem; border-radius: 0.5rem; margin: 0.25rem 0; color: #495057;'>{opt}</div>", unsafe_allow_html=True)
             
             # 显示解析
             if current_question.get("explanation"):
                 st.markdown("---")
-                st.info(f"📖 解析：{current_question['explanation']}")
+                st.markdown(f"<div style='background-color: rgba(255, 255, 240, 0.9); padding: 1rem; border-radius: 0.75rem; margin: 0.5rem 0; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05); border-left: 4px solid #84a98c;'><strong>📖 解析：</strong>{current_question['explanation']}</div>", unsafe_allow_html=True)
             
             # 下一题按钮
             st.button("➡️ 下一题", on_click=lambda: st.session_state.update({"current_question_idx": current_idx + 1}), type="primary")
