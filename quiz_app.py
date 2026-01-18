@@ -16,47 +16,153 @@ st.set_page_config(
 # --- 自定义CSS ---
 st.markdown("""
 <style>
+    /* 护眼背景设置 - 使用更柔和的颜色 */
+    body {
+        background-color: #f5f5dc; /* 米色/象牙白 - 经典护眼颜色 */
+        background-image: linear-gradient(to bottom, #f5f5dc, #f0f0d0);
+        min-height: 100vh;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    }
+    
+    /* Streamlit 主容器背景 - 半透明效果减少视觉疲劳 */
+    .main .block-container {
+        background-color: rgba(255, 255, 245, 0.95);
+        border-radius: 1rem;
+        padding: 2rem;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    }
+    
+    /* 卡片样式优化 - 更柔和的阴影和背景 */
+    div[data-testid="stExpander"] {
+        background-color: rgba(255, 255, 240, 0.98);
+        border-radius: 0.75rem;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
+    
+    /* 单选框样式优化 - 降低对比度 */
     div[data-baseweb="radio"] { display: flex; flex-direction: column; gap: 0.5rem; }
     div[data-baseweb="radio"] > div { 
         display: flex; align-items: center; width: 100% !important; 
-        padding: 0.5rem 0.75rem; border: 1px solid #d1d5db; border-radius: 0.5rem; 
-        background-color: #f9fafb; transition: all 0.2s ease; cursor: pointer; 
+        padding: 0.5rem 0.75rem; border: 1px solid #e0e0c8; border-radius: 0.5rem; 
+        background-color: rgba(255, 255, 255, 0.8); transition: all 0.2s ease; cursor: pointer; 
     }
     div[data-baseweb="radio"] > div[aria-checked="true"] { 
-        border-color: #2563eb; background-color: #eff6ff; font-weight: bold; 
+        border-color: #6a994e; background-color: rgba(217, 249, 157, 0.3); font-weight: 500; 
     }
     div[data-baseweb="radio"] > div:hover { 
-        border-color: #93c5fd; background-color: #dbeafe; 
+        border-color: #84a98c; background-color: rgba(229, 239, 213, 0.6); 
     }
     div[data-baseweb="radio"] > div > div:first-child { display: none; }
     div[data-baseweb="radio"] > div > div:last-child { 
         flex-grow: 1; text-align: left; font-size: 0.9rem; 
     }
-    /* 多选框样式优化 */
+    /* 多选框样式优化 - 降低对比度 */
     div[data-baseweb="checkbox"] { display: flex; flex-direction: column; gap: 0.5rem; }
     div[data-baseweb="checkbox"] > div { 
         display: flex; align-items: center; width: 100% !important; 
-        padding: 0.5rem 0.75rem; border: 1px solid #d1d5db; border-radius: 0.5rem; 
-        background-color: #f9fafb; transition: all 0.2s ease; cursor: pointer; 
+        padding: 0.5rem 0.75rem; border: 1px solid #e0e0c8; border-radius: 0.5rem; 
+        background-color: rgba(255, 255, 255, 0.8); transition: all 0.2s ease; cursor: pointer; 
     }
     div[data-baseweb="checkbox"] > div[data-checked="true"] { 
-        border-color: #2563eb; background-color: #eff6ff; font-weight: bold; 
+        border-color: #6a994e; background-color: rgba(217, 249, 157, 0.3); font-weight: 500; 
     }
     div[data-baseweb="checkbox"] > div:hover { 
-        border-color: #93c5fd; background-color: #dbeafe; 
+        border-color: #84a98c; background-color: rgba(229, 239, 213, 0.6); 
     }
     div[data-baseweb="checkbox"] > div > div:first-child { display: none; }
     div[data-baseweb="checkbox"] > div > div:last-child { 
         flex-grow: 1; text-align: left; font-size: 0.9rem; 
     }
+    /* 按钮样式优化 - 更柔和的颜色 */
     .stButton > button { 
         width: 100%; font-size: 0.9rem; padding-top: 0.5rem; padding-bottom: 0.5rem; 
+        border-radius: 0.5rem;
+        transition: all 0.2s ease;
+        background-color: #d4e6dc;
+        color: #334155;
+        border: 1px solid #adc1b5;
     }
+    .stButton > button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        background-color: #c5dac1;
+        border-color: #9cb5a4;
+    }
+    /* 消息样式优化 - 降低对比度 */
     .stSuccess, .stError, .stWarning { 
         padding: 0.75rem; border-radius: 0.5rem; font-size: 1rem; 
+        background-color: rgba(255, 255, 255, 0.9);
     }
-    .stCaption { font-size: 0.85rem; line-height: 1.5; }
-    div[data-baseweb="tabs"] { margin-bottom: 1rem; }
+    /* 标题样式优化 - 降低饱和度 */
+    h1, h2, h3, h4, h5, h6 {
+        color: #2d3748;
+        font-weight: 600;
+    }
+    
+    /* 文本样式优化 - 降低对比度，提高可读性 */
+    p, span, div {
+        color: #4a5568;
+        line-height: 1.6;
+    }
+    
+    /* 链接样式优化 */
+    a {
+        color: #4a7c59;
+        text-decoration: none;
+    }
+    a:hover {
+        color: #3a6645;
+        text-decoration: underline;
+    }
+    
+    /* 进度条样式优化 */
+    .stProgress > div > div {
+        background-color: #84a98c;
+    }
+    
+    /* 滑块样式优化 */
+    .stSlider > div > div > div > div {
+        background-color: #84a98c;
+    }
+    
+    /* 选项卡样式优化 */
+    div[data-baseweb="tabs"] {
+        margin-bottom: 1rem;
+        background-color: rgba(255, 255, 255, 0.8);
+        border-radius: 0.5rem;
+        padding: 0.25rem;
+    }
+    
+    /* 标题栏样式 */
+    [data-testid="stHeader"] {
+        background-color: rgba(245, 245, 220, 0.9);
+    }
+    
+    /* 侧边栏样式 */
+    [data-testid="stSidebar"] {
+        background-color: rgba(245, 245, 220, 0.95);
+    }
+    
+    /* 输入框样式 */
+    .stTextInput > div > div > input, .stNumberInput > div > div > input {
+        background-color: rgba(255, 255, 255, 0.8);
+        border: 1px solid #e0e0c8;
+        border-radius: 0.5rem;
+    }
+    
+    /* 文本区域样式 */
+    .stTextArea > div > div > textarea {
+        background-color: rgba(255, 255, 255, 0.8);
+        border: 1px solid #e0e0c8;
+        border-radius: 0.5rem;
+    }
+    
+    /* 选择框样式 */
+    .stSelectbox > div > div > select {
+        background-color: rgba(255, 255, 255, 0.8);
+        border: 1px solid #e0e0c8;
+        border-radius: 0.5rem;
+    }
 </style>
 """, unsafe_allow_html=True)
 
