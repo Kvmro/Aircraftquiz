@@ -537,8 +537,6 @@ def main():
     if 'user_id' not in st.session_state:
         col1, col2, col3 = st.columns([1,2,1])
         with col2:
-            # 添加护眼背景的登录容器
-            st.markdown("<div style='background-color: rgba(255, 255, 240, 0.9); padding: 2rem; border-radius: 1rem; margin: 1rem 0; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);'>", unsafe_allow_html=True)
             with st.form("login_form"):
                 st.header("👤 用户登录")
                 user_id = st.text_input("请输入你的昵称/ID", placeholder="例如：张三123", label_visibility="collapsed")
@@ -548,7 +546,6 @@ def main():
                     st.rerun()
                 elif submitted:
                     st.warning("请输入昵称/ID后登录！")
-            st.markdown("</div>", unsafe_allow_html=True)
         return
 
     # 初始化数据
@@ -580,8 +577,7 @@ def main():
         }
         
         # 显示加载成功信息
-        st.markdown(f"<div style='background-color: rgba(255, 255, 240, 0.9); padding: 1rem; border-radius: 0.75rem; margin: 0.5rem 0; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05); border-left: 4px solid #84a98c;'>" \
-                    f"✅ 题库加载完成（共 {questions_data['total']} 道有效题目，包含单选题 {questions_data['total_single']} 道，多选题 {questions_data['total_multiple']} 道）</div>", unsafe_allow_html=True)
+        st.success(f"✅ 题库加载完成（共 {questions_data['total']} 道有效题目，包含单选题 {questions_data['total_single']} 道，多选题 {questions_data['total_multiple']} 道）")
         
         generate_new_batch()
 
@@ -663,12 +659,8 @@ def main():
         # 答题逻辑
         if st.session_state.quiz_finished:
             st.balloons()
-            # 练习完成信息，添加护眼背景
-            st.markdown("<div style='background-color: rgba(255, 255, 240, 0.9); padding: 1.5rem; border-radius: 1rem; margin: 1rem 0; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05); text-align: center;'>" \
-                        f"🎉 本轮练习完成！</div>", unsafe_allow_html=True)
+            st.success("🎉 本轮练习完成！")
             
-            # 按钮容器，添加护眼背景
-            st.markdown("<div style='background-color: rgba(255, 255, 240, 0.9); padding: 1rem; border-radius: 0.75rem; margin: 0.5rem 0; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);'>", unsafe_allow_html=True)
             col_fin1, col_fin2 = st.columns(2)
             with col_fin1:
                 if st.button("🔄 继续练习", type="primary"):
@@ -679,7 +671,6 @@ def main():
                     st.rerun()
             with col_fin2:
                 st.button("📚 去错题本", type="secondary", help="点击上方「错题本」标签页查看")
-            st.markdown("</div>", unsafe_allow_html=True)
             return
 
         current_batch = st.session_state.current_batch
@@ -696,9 +687,7 @@ def main():
             }
             save_progress(st.session_state.user_id, progress_to_save, st.session_state.user_row_id, force_save=True)
             
-            # 添加护眼背景的批次完成信息
-            st.markdown("<div style='background-color: rgba(255, 255, 240, 0.9); padding: 1.5rem; border-radius: 1rem; margin: 1rem 0; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05); text-align: center;'>" \
-                        f"✅ 本轮批次完成！正在生成新批次...</div>", unsafe_allow_html=True)
+            st.success("✅ 本轮批次完成！正在生成新批次...")
             if st.session_state.current_mode == "normal":
                 generate_new_batch()
             else:
@@ -709,21 +698,14 @@ def main():
         question_id = current_question['id']
         is_multiple = current_question['is_multiple']  # 获取是否为多选题
         
-        # 进度显示
-        st.markdown(f"<div style='background-color: rgba(255, 255, 240, 0.9); padding: 0.75rem; border-radius: 0.75rem; margin: 0.5rem 0; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05); text-align: center;'>" \
-                    f"<strong>本轮进度：{current_idx + 1}/{len(current_batch)} 题</strong></div>", unsafe_allow_html=True)
-        
-        # 题目显示
-        st.markdown(f"<div style='background-color: rgba(255, 255, 240, 0.9); padding: 1rem; border-radius: 0.75rem; margin: 0.5rem 0; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);'>" \
-                    f"### {current_question['question']}</div>", unsafe_allow_html=True)
+        st.subheader(f"本轮进度：{current_idx + 1}/{len(current_batch)} 题")
+        st.write(f"### {current_question['question']}")
         
         # 显示题型提示
         if is_multiple:
-            st.markdown("<div style='background-color: rgba(255, 255, 240, 0.9); padding: 0.75rem; border-radius: 0.75rem; margin: 0.5rem 0; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05); border-left: 4px solid #f59e0b;'>" \
-                        f"📌 本题为多选题：请选择所有正确答案（支持多选）</div>", unsafe_allow_html=True)
+            st.warning("📌 本题为多选题：请选择所有正确答案（支持多选）")
         else:
-            st.markdown("<div style='background-color: rgba(255, 255, 240, 0.9); padding: 0.75rem; border-radius: 0.75rem; margin: 0.5rem 0; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05); border-left: 4px solid #3b82f6;'>" \
-                        f"📌 本题为单选题：请选择唯一正确答案</div>", unsafe_allow_html=True)
+            st.info("📌 本题为单选题：请选择唯一正确答案")
 
         is_submitted = question_id in st.session_state.submitted_answers
         user_answer_data = st.session_state.submitted_answers.get(question_id)
@@ -992,9 +974,7 @@ def main():
 
     # 错题本标签页（核心修改6：适配多选题错题展示）
     with tab2:
-        # 错题本标题，添加护眼背景
-        st.markdown("<div style='background-color: rgba(255, 255, 240, 0.9); padding: 1rem; border-radius: 0.75rem; margin: 0.5rem 0; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05); text-align: center;'>" \
-                    f"📚 错题本管理</div>", unsafe_allow_html=True)
+        st.header("📚 错题本管理")
         st.markdown("---")
         
         error_ids = list(st.session_state.error_counts.keys())
@@ -1002,8 +982,6 @@ def main():
         all_questions = st.session_state.all_questions
         error_questions = [q for q in all_questions if q['id'] in error_ids_int]
         
-        # 统计信息容器，添加护眼背景
-        st.markdown("<div style='background-color: rgba(255, 255, 240, 0.9); padding: 1rem; border-radius: 0.75rem; margin: 0.5rem 0; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);'>", unsafe_allow_html=True)
         col_stat1, col_stat2, col_stat3 = st.columns(3)
         with col_stat1:
             st.metric("总错题数", len(error_questions))
@@ -1013,16 +991,12 @@ def main():
         with col_stat3:
             mastered_error = len([q for q in error_questions if q['id'] in st.session_state.correct_ids])
             st.metric("已订正错题", mastered_error)
-        st.markdown("</div>", unsafe_allow_html=True)
         
-        # 按钮容器，添加护眼背景
-        st.markdown("<div style='background-color: rgba(255, 255, 240, 0.9); padding: 1rem; border-radius: 0.75rem; margin: 0.5rem 0; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);'>", unsafe_allow_html=True)
         col_btn1, col_btn2, col_btn3 = st.columns(3)
         with col_btn1:
             if st.button("🚀 专项练习错题", type="primary", disabled=len(error_questions)==0):
                 generate_error_batch()
-                st.markdown("<div style='background-color: rgba(255, 255, 240, 0.9); padding: 0.75rem; border-radius: 0.5rem; margin: 0.5rem 0; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05); border-left: 4px solid #84a98c;'>" \
-                            f"✅ 错题练习批次已生成！请切换到「答题练习」标签页开始练习～</div>", unsafe_allow_html=True)
+                st.success("✅ 错题练习批次已生成！请切换到「答题练习」标签页开始练习～")
         with col_btn2:
             if st.button("🧹 清空已订正错题", type="secondary", disabled=mastered_error==0):
                 new_error_counts = {}
@@ -1042,12 +1016,10 @@ def main():
                     "last_wrong_answers": new_last_wrong
                 }
                 save_progress(st.session_state.user_id, progress_to_save, st.session_state.user_row_id)
-                st.markdown("<div style='background-color: rgba(255, 255, 240, 0.9); padding: 0.75rem; border-radius: 0.5rem; margin: 0.5rem 0; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05); border-left: 4px solid #84a98c;'>" \
-                            f"✅ 已清空已订正的错题！</div>", unsafe_allow_html=True)
+                st.success("✅ 已清空已订正的错题！")
                 st.rerun()
         with col_btn3:
             st.button("📝 返回答题练习", type="secondary", help="点击上方「答题练习」标签页继续")
-        st.markdown("</div>", unsafe_allow_html=True)
         
         st.markdown("---")
         
@@ -1055,14 +1027,11 @@ def main():
             page_size = 10
             total_pages = (len(error_questions) + page_size - 1) // page_size
             
-            # 分页容器，添加护眼背景
-            st.markdown("<div style='background-color: rgba(255, 255, 240, 0.9); padding: 1rem; border-radius: 0.75rem; margin: 0.5rem 0; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);'>", unsafe_allow_html=True)
             col_page1, col_page2 = st.columns([8,2])
             with col_page1:
                 page_num = st.selectbox("选择页码", range(1, total_pages+1), label_visibility="collapsed")
             with col_page2:
                 st.write(f"第 {page_num}/{total_pages} 页")
-            st.markdown("</div>", unsafe_allow_html=True)
             
             current_page_errors, total_errors = paginate_list(error_questions, page_num, page_size)
             
@@ -1073,8 +1042,6 @@ def main():
                 is_multiple = q['is_multiple']
                 
                 with st.expander(f"📌 错题 {page_size*(page_num-1)+idx+1} | 错误 {error_count} 次 | 题干：{q['question'][:50]}..."):
-                    # 错题详情，添加护眼背景
-                    st.markdown("<div style='background-color: rgba(255, 255, 240, 0.9); padding: 1rem; border-radius: 0.75rem; margin: 0.5rem 0; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);'>", unsafe_allow_html=True)
                     st.write(f"### 题干：{q['question']}")
                     
                     st.write("#### 选项：")
@@ -1093,7 +1060,7 @@ def main():
                     
                     # 适配多选题正确答案展示
                     if is_multiple:
-                        correct_answer_texts = [opt for opt in q["options"] \
+                        correct_answer_texts = [opt for opt in q["options"] 
                                                 if opt.split(".")[0].strip().upper() in q["answer"]]
                         st.markdown(f"#### ✅ 正确答案：<span style='color:green'>{', '.join(correct_answer_texts)}</span>", unsafe_allow_html=True)
                     else:
@@ -1102,8 +1069,6 @@ def main():
                     
                     if q.get("explanation"):
                         st.markdown(f"#### 📖 解析：{q['explanation']}", unsafe_allow_html=True)
-                    
-                    st.markdown("</div>", unsafe_allow_html=True)
                     
                     if st.button(f"✅ 标记为已掌握", key=f"master_{q['id']}"):
                         st.session_state.correct_ids.add(q['id'])
